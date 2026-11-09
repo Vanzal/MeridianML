@@ -1,13 +1,15 @@
 """Seite 2: Den Tokenizer und die Daten genauer anschauen."""
 from __future__ import annotations
 
+import html
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from minillm.data import prepared_path
-from minillm.tokenizer import BPETokenizer
+from magicllm.data import prepared_path
+from magicllm.tokenizer import BPETokenizer
 from ui.common import PALETTE, fmt_int, hero, need_data, style_fig, token_chips
 
 
@@ -27,7 +29,8 @@ def _vocab_experiment(sample: str, sizes: tuple[int, ...]) -> list[dict]:
 
 
 def render() -> None:
-    hero("🔤 Tokenizer & Daten", "Bevor das Modell lernt, wird jeder Text in Tokens zerlegt. Hier siehst du, wie das aussieht.")
+    hero("Tokenizer & Daten", "Bevor das Modell lernt, wird jeder Text in Tokens zerlegt. Hier siehst du, wie das aussieht.",
+         crumb="tokenizer")
     meta = need_data()
     d = prepared_path(meta["name"])
     tok = _load_tok(str(d / "tokenizer.json"), (d / "tokenizer.json").stat().st_mtime)
@@ -40,7 +43,7 @@ def render() -> None:
                 help="Je höher, desto stärker komprimiert der Tokenizer den Text.")
     c[4].metric("Dokumente", f"{meta['n_docs_train']:,}")
 
-    st.subheader("✍️ Ausprobieren")
+    st.subheader("Ausprobieren")
     text = st.text_area("Text eingeben", "Once upon a time, a little dog named Max found a shiny red ball.",
                         height=90, key="tok_text")
     pieces = tok.pieces(text)
@@ -57,7 +60,7 @@ def render() -> None:
     with left:
         top = pd.DataFrame(meta["top_tokens"][:30], columns=["Token", "Anzahl"])
         fig = px.bar(top[::-1], x="Anzahl", y="Token", orientation="h", title="Häufigste Tokens")
-        fig.update_traces(marker_color=PALETTE["violet"])
+        fig.update_traces(marker_color=PALETTE["fg"])
         st.plotly_chart(style_fig(fig, 520, legend=False), width="stretch")
     with right:
         lens = meta["doc_token_lengths"]
@@ -73,13 +76,14 @@ def render() -> None:
                           yaxis_type="log", xaxis_title="Rang des Tokens", yaxis_title="Häufigkeit")
         st.plotly_chart(style_fig(fig, 250, legend=False), width="stretch")
 
-    st.subheader("🧩 So hat der Tokenizer gelernt")
+    st.subheader("So hat der Tokenizer gelernt")
     st.caption("BPE verschmilzt immer das häufigste Paar. Die ersten Merges sind Buchstaben-Paare, "
-               "später entstehen ganze Wörter.")
+               "später entstehen ganze Wörter. Die Zahl sagt, wie oft das Paar beim Verschmelzen vorkam.")
     merges = meta["first_merges"]
     cols = st.columns(4)
     for i, (t, n) in enumerate(merges[:40]):
-        cols[i % 4].markdown(f"`{i + 1:>2}.` **{t}** <span class='muted'>({n:,}×)</span>", unsafe_allow_html=True)
+        cols[i % 4].markdown(f"<span class='muted' style='font-family:var(--ml-mono)'>{i + 1:>2}.</span> "
+                             f"<code>{html.escape(t)}</code> <span class='muted'>({n:,}×)</span>", unsafe_allow_html=True)
 
     later = [(256 + i, tok.token_str(256 + i)) for i in range(len(tok.merges) - 30, len(tok.merges))] \
         if len(tok.merges) > 70 else []
@@ -87,13 +91,14 @@ def render() -> None:
         st.caption("Die letzten gelernten Tokens (seltener, dafür länger):")
         st.markdown(token_chips(later), unsafe_allow_html=True)
 
-    with st.expander("📈 Experiment: Wie wirkt sich die Vokabular-Grösse aus?"):
+    with st.expander("Experiment: Wie wirkt sich die Vokabular-Grösse aus?", icon=":material/science:"):
         st.caption("Wir trainieren mehrere Tokenizer auf einem kleinen Textausschnitt und messen die Kompression.")
         if st.button("Experiment starten"):
-            from minillm.catalog import read_documents, raw_path  # noqa: F401
-            from minillm.catalog import RAW_DIR
+            from magicllm.catalog import RAW_DIR, read_documents
             files = sorted(RAW_DIR.glob("*.txt"))
-            if files:
+            if not files:
+                st.info("Keine Rohtexte gefunden – lade zuerst einen Datensatz auf der Seite Daten.")
+            else:
                 sample = "\n".join(read_documents(files[0]))[:300_000]
                 rows = _vocab_experiment(sample, (300, 400, 600, 1000, 1500, 2500))
                 fig = px.line(pd.DataFrame(rows), x="Vokabular", y="Zeichen pro Token", markers=True)

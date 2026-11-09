@@ -1,48 +1,64 @@
-# 🧠 MiniLLM Studio
+# Magic LLM
 
 **Ein eigenes Sprachmodell (GPT) – von Grund auf gebaut, mit Hugging-Face-Daten trainiert und in einer App live sichtbar gemacht.**
 
-Abschlussprojekt der Wiss · Autor: Joel Weber
+Neutrale, ruhige Oberfläche im Stil der llama.cpp-WebUI und des omp-Terminals, dazu eine Kommandozeile wie `llama-cli`.
 
 ![Training-Dashboard](docs/screenshots/05-training-kurven.png)
-<sub>Live-Dashboard während/nach einem kurzen Trainingslauf (300 Schritte).</sub>
+<sub>Live-Dashboard nach einem kurzen Trainingslauf (Screenshots mit einem offline erzeugten Beispielkorpus aus kurzen Geschichten).</sub>
 
 ---
 
-> 🎓 **Neu hier?** Springe zu [LLMs verstehen – Einstieg für Anfänger](#-llms-verstehen--einstieg-für-anfänger).
+> **Neu hier?** Springe zu [LLMs verstehen – Einstieg für Anfänger](#llms-verstehen--einstieg-für-anfänger).
 
 ## Worum geht es?
 
-ChatGPT & Co. wirken wie Magie. In diesem Projekt habe ich gezeigt, dass dahinter erstaunlich wenig steckt – und alles
+ChatGPT & Co. wirken wie Magie. Dieses Projekt zeigt, dass dahinter erstaunlich wenig steckt – und alles ist
 selbst gebaut, **ohne fertige Modelle oder Tokenizer-Bibliotheken**:
 
 | Baustein | Selbst geschrieben in | Was es macht |
 |---|---|---|
-| **BPE-Tokenizer** | [`minillm/tokenizer.py`](minillm/tokenizer.py) | zerlegt Text in Tokens, lernt häufige Buchstabenfolgen selbst |
-| **GPT-Transformer** | [`minillm/model.py`](minillm/model.py) | Embeddings, Causal Self-Attention, MLP, LayerNorm, Residuals |
-| **Trainings-Schleife** | [`minillm/trainer.py`](minillm/trainer.py) | AdamW, Warmup + Kosinus-Lernrate, Gradient Clipping, Validierung |
-| **Text-Erzeugung** | [`minillm/generate.py`](minillm/generate.py) | Temperatur, Top-k, Top-p (Nucleus-Sampling) |
-| **Daten-Pipeline** | [`minillm/catalog.py`](minillm/catalog.py), [`data.py`](minillm/data.py) | 41 Hugging-Face-Datensätze per Streaming laden und mischen |
+| **BPE-Tokenizer** | [`magicllm/tokenizer.py`](magicllm/tokenizer.py) | zerlegt Text in Tokens, lernt häufige Buchstabenfolgen selbst |
+| **GPT-Transformer** | [`magicllm/model.py`](magicllm/model.py) | Embeddings, Causal Self-Attention, MLP, LayerNorm, Residuals |
+| **Trainings-Schleife** | [`magicllm/trainer.py`](magicllm/trainer.py) | AdamW, Warmup + Kosinus-Lernrate, Gradient Clipping, Validierung |
+| **Text-Erzeugung** | [`magicllm/generate.py`](magicllm/generate.py) | Temperatur, Top-k, Top-p, Min-p, Wiederholungs-Strafe (wie llama.cpp) |
+| **Daten-Pipeline** | [`magicllm/catalog.py`](magicllm/catalog.py), [`data.py`](magicllm/data.py) | 41 Hugging-Face-Datensätze per Streaming laden und mischen |
 | **App** | [`app.py`](app.py), [`ui/`](ui) | Streamlit-Oberfläche mit vielen interaktiven Diagrammen |
+| **Kommandozeile** | [`train_cli.py`](train_cli.py), [`generate_cli.py`](generate_cli.py) | Trainieren und Text erzeugen ohne App |
 
 Verwendet wird nur **PyTorch** (für Tensoren und automatische Ableitung), **`datasets`** (zum Laden der Daten),
 **Streamlit** und **Plotly** (für die App).
+
+## Was ist neu in Magic LLM 2.0?
+
+| Bereich | Änderung |
+|---|---|
+| **Oberfläche** | Komplett neu gestaltet: neutrales Schwarz/Weiss wie die llama.cpp-WebUI, Inter + JetBrains Mono, Seitenköpfe im Terminal-Stil, Material-Icons statt Emojis, ruhige Diagramme |
+| **Generieren** | **Min-p** und **Wiederholungs-Strafe** (wie `--min-p` / `--repeat-penalty` in llama.cpp), Stopp am Text-Ende, Statistik-Zeile (Tokens, tok/s, Zeit), Text herunterladen |
+| **Umlaute** | Fehler behoben: Zeichen, die auf zwei Tokens verteilt sind (ä, ö, ü, Emojis …), erschienen beim Erzeugen als „��“. Jetzt dekodiert ein inkrementeller UTF-8-Decoder korrekt |
+| **Kommandozeile** | Neues `generate_cli.py` im Stil von `llama-cli` (`-m`, `-p`, `-n`, `--temp`, `--top-k`, `--top-p`, `--min-p`, `--repeat-penalty`, `-s`, `--list`) |
+| **Robustheit** | Checkpoints und `run.json` werden atomar geschrieben (die Seite „Generieren“ liest während des Trainings nie eine halbe Datei); kaputte Lauf-Ordner legen die App nicht mehr lahm; Metrik-Datei wird auch bei Fehlern geschlossen; Lauf-Namen werden bereinigt (kein Schreiben ausserhalb von `runs/`) |
+| **GPU** | Absturz behoben: das Gewichts-Histogramm im Training rief `.numpy()` auf einem GPU-Tensor auf |
+| **Läufe** | Löschen nur mit Bestätigung und nie während der Lauf trainiert; Checkpoint und Tokenizer herunterladen; Spalte „Gerät“ |
+| **Modell-Seite** | Parameter werden auf dem `meta`-Gerät gezählt – auch 200-Mio.-Modelle erscheinen sofort, ohne Speicher zu belegen |
+| **Daten** | Leere Datensätze werden sauber gemeldet; Warnung, wenn ein vorbereiteter Datensatz überschrieben wird |
+| **Tests** | Neue Tests für Sampling, UTF-8-Streaming, atomare Checkpoints, CLI, Emoji-Freiheit der Oberfläche; GitHub-Actions-Workflow |
 
 ## Was kann die App?
 
 Die App führt mit sechs Seiten durch den ganzen Weg von den Rohdaten bis zum fertigen Modell:
 
-1. **📚 Daten** – 41 Datensätze von Hugging Face zur Auswahl (Geschichten, Wikipedia, Web, Nachrichten, **Code**, Chat,
+1. **Daten** – 41 Datensätze von Hugging Face zur Auswahl (Geschichten, Wikipedia, Web, Nachrichten, **Code**, Chat,
    Deutsch …), mit Filter, Vorschau und fertigen Mischungen (z. B. „Code“, „Deutsch“, „Text + Code“).
    → [Alle Datensätze](docs/DATASETS.md)
-2. **🔤 Tokenizer** – eigenes Vokabular trainieren, Text in farbige Tokens zerlegen, Zipf-Verteilung ansehen.
-3. **🧠 Modell** – Grösse per Regler einstellen; die Architektur wird live als Diagramm gezeichnet, dazu Parameter-Anzahl
+2. **Tokenizer** – eigenes Vokabular trainieren, Text in farbige Tokens zerlegen, Zipf-Verteilung ansehen.
+3. **Modell** – Grösse per Regler einstellen; die Architektur wird live als Diagramm gezeichnet, dazu Parameter-Anzahl
    und Speicherbedarf.
-4. **🏋️ Training** – Live-Kurven (Loss, Lernrate, Gradienten, Perplexity), Beispieltexte, Aufmerksamkeits-Heatmaps,
+4. **Training** – Live-Kurven (Loss, Lernrate, Gradienten, Perplexity), Beispieltexte, Aufmerksamkeits-Heatmaps,
    Embedding-Landkarte und Gewichts-Histogramme – alles während das Modell lernt.
-5. **✨ Generieren** – Text schreiben lassen und verstehen, *warum* das Modell sich so entscheidet (Wahrscheinlichkeiten,
+5. **Generieren** – Text schreiben lassen und verstehen, *warum* das Modell sich so entscheidet (Wahrscheinlichkeiten,
    Temperatur-Effekt, Attention).
-6. **📊 Läufe vergleichen** – mehrere Trainings übereinander legen.
+6. **Läufe** – mehrere Trainings übereinander legen, Checkpoints exportieren.
 
 <table>
 <tr>
@@ -65,28 +81,33 @@ Voraussetzung: **Python 3.10+**. Wenn eine **Grafikkarte (GPU)** da ist, wird si
 ausgelastet (siehe [GPU-Unterstützung](#gpu-unterstützung)). Ohne GPU läuft alles auf der CPU, nur langsamer.
 
 ```bash
-git clone https://github.com/sideforge/MiniLLM-Studio.git
-cd MiniLLM-Studio
+git clone <URL dieses Repos> magic-llm
+cd magic-llm
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
 Dann im Browser (öffnet sich automatisch):
 
-1. **Daten** → Mischung „📖 Geschichten (schnell)“ klicken → **Laden & vorbereiten** (ca. 1 Minute)
+1. **Daten** → Mischung „Geschichten (schnell)“ klicken → **Laden & vorbereiten** (ca. 1 Minute)
 2. **Training** → **Training starten** (1500 Schritte ≈ 10 Minuten auf einem Laptop)
 3. **Generieren** → Prompt eingeben → **Erzeugen**
 
-Ohne App geht es auch über die Kommandozeile:
+Ohne App geht es auch über die Kommandozeile – Training und Text-Erzeugung, bedient wie `llama-cli`:
 
 ```bash
 python train_cli.py --datasets tinystories=5000 shakespeare=300 --steps 1500 --name test
+python generate_cli.py --list
+python generate_cli.py -m test -p "Once upon a time" -n 120 --temp 0.8 --min-p 0.05 --repeat-penalty 1.1 -s 42
 ```
+
+`generate_cli.py` schreibt den Text auf stdout und Statistik (Tokens, tok/s) auf stderr, lässt sich also gut in
+andere Programme einbinden.
 
 ## Eigene Datensätze und starke Modelle
 
-**Jeder öffentliche Datensatz von Hugging Face geht.** Auf der Seite **📚 Daten** gibt es den Bereich
-**„➕ Eigenen Hugging-Face-Datensatz hinzufügen“**:
+**Jeder öffentliche Datensatz von Hugging Face geht.** Auf der Seite **Daten** gibt es den Bereich
+**„Eigenen Hugging-Face-Datensatz hinzufügen“**:
 
 1. **Im Hub suchen** (z. B. „python code“, „german news“, „math“) und einen Treffer anklicken, oder den Namen direkt
    eintippen (`besitzer/name`).
@@ -96,7 +117,7 @@ python train_cli.py --datasets tinystories=5000 shakespeare=300 --steps 1500 --n
 3. Spalten wählen, **Vorschau** ansehen, **„Zum Katalog hinzufügen“**. Der Datensatz bleibt gespeichert und verhält sich
    wie alle anderen: auswählen, Dokumentenzahl einstellen, mischen, trainieren.
 
-Gesperrte Datensätze (🔒) brauchen eine Anmeldung (`huggingface-cli login` oder die Umgebungsvariable `HF_TOKEN`).
+Gesperrte Datensätze (Spalte „Gesperrt“) brauchen eine Anmeldung (`huggingface-cli login` oder die Umgebungsvariable `HF_TOKEN`).
 Alte Datensätze mit Lade-Skript funktionieren nicht mehr, dann meldet die App das verständlich.
 Haben die Zeilen einer JSON-Datei **unterschiedliche Strukturen** (z. B. Protokolle von Chat- oder Agenten-Sitzungen),
 scheitert die `datasets`-Bibliothek mit einem `CastError`. Die App erkennt das und liest die Dateien dann direkt als JSON.
@@ -135,7 +156,7 @@ mit **GPU-Auslastung in %**, Grafikspeicher, Leistung in Watt und Temperatur (ge
 90–100 %. Liegt die Auslastung darunter, sagt die App es dir.
 
 **Wichtig: Ein winziges Modell kann eine grosse GPU nicht auslasten**, egal wie gut der Code ist. Es hat schlicht zu
-wenig zu rechnen. Darum gibt es auf der Seite **🧠 Modell** den Knopf **„🚀 GPU-Maximum“**: Er wählt abhängig vom
+wenig zu rechnen. Darum gibt es auf der Seite **Modell** den Knopf **„GPU-Maximum“**: Er wählt abhängig vom
 Grafikspeicher die passende Grösse (z. B. ca. 12 Schichten · Breite 768 ab 12 GB, ca. 16 Schichten · Breite 1024 ab
 20 GB). Zusammen mit dem Auto-Batch wird die Karte dann so ausgelastet, wie es mit PyTorch geht. Für die letzten
 Prozente kann in der NVIDIA-Systemsteuerung noch **„Energieverwaltung: Maximale Leistung bevorzugen“** und in Windows
@@ -158,10 +179,10 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_
 Auf der Kommandozeile gibt es dafür `--device auto|cpu|cuda|xpu|mps`, `--batch 0` (= Auto) und `--no-amp`.
 
 > **Ehrlicher Hinweis:** Der GPU-Code ist nach den üblichen PyTorch-Mustern gebaut, und alle Tests laufen auf der CPU
-> durch. Ich konnte ihn aber nur auf einem Rechner **ohne** NVIDIA-Karte entwickeln, also nicht auf einer echten GPU
-> messen. Die Zahlen unter „Ergebnisse“ stammen deshalb von der CPU.
+> durch. Entwickelt und gemessen wurde aber auf Rechnern **ohne** NVIDIA-Karte. Die Zahlen unter „Ergebnisse“ stammen
+> deshalb von der CPU.
 
-## 🎓 LLMs verstehen – Einstieg für Anfänger
+## LLMs verstehen – Einstieg für Anfänger
 
 Du musst nichts über KI wissen, um hier mitzukommen. Lies die Abschnitte der Reihe nach und probiere dazwischen die
 passende Seite der App aus. Am Ende steht eine Liste mit **Mini-Experimenten**.
@@ -186,7 +207,7 @@ folgen, und daraus ein sehr gutes Gefühl für Sprache entwickelt.
       1. zerlegen              2. Bedeutung        3. Zusammenhänge verstehen            4. vorhersagen
 ```
 
-#### Schritt 1 – Text in Tokens zerlegen &nbsp;(Seite **🔤 Tokenizer**)
+#### Schritt 1 – Text in Tokens zerlegen &nbsp;(Seite **Tokenizer**)
 
 Ein Computer kann nur mit Zahlen rechnen. Darum wird der Text in kleine Stücke zerlegt, die **Tokens**. Ein Token ist
 mal ein ganzes Wort („Katze“), mal ein Wortteil („sitz“ + „t“), mal nur ein Satzzeichen. Jedes Token hat eine Nummer.
@@ -199,12 +220,12 @@ mal ein ganzes Wort („Katze“), mal ein Wortteil („sitz“ + „t“), mal 
 
 Warum nicht einfach jedes Wort? Es gibt unzählige Wörter (Namen, Tippfehler, zusammengesetzte deutsche Wörter wie
 „Donaudampfschifffahrtsgesellschaft“). Mit **Wortteilen** kommt man mit einem Vokabular von einigen Tausend bis
-Zehntausend Einträgen aus und kann trotzdem jedes Wort bilden. Mein Tokenizer lernt diese Teile selbst: Er sucht immer
+Zehntausend Einträgen aus und kann trotzdem jedes Wort bilden. Der Tokenizer von Magic LLM lernt diese Teile selbst: Er sucht immer
 das häufigste Buchstabenpaar und macht daraus ein neues Token (*Byte-Pair-Encoding*).
 
-#### Schritt 2 – Jedes Token bekommt eine „Bedeutung“ &nbsp;(Ansicht **🗺 Embeddings** im Training)
+#### Schritt 2 – Jedes Token bekommt eine „Bedeutung“ &nbsp;(Ansicht **Embeddings** im Training)
 
-Die Nummer 305 sagt dem Modell noch nichts. Deshalb bekommt jedes Token eine **Liste aus Zahlen** (bei meinem Modell
+Die Nummer 305 sagt dem Modell noch nichts. Deshalb bekommt jedes Token eine **Liste aus Zahlen** (beim Standard-Modell
 128 Zahlen), den *Embedding*-Vektor. Stell dir das als **Koordinaten auf einer riesigen Landkarte** vor:
 
 - Tokens, die ähnlich benutzt werden („Hund“, „Katze“), liegen **nah beieinander**.
@@ -213,7 +234,7 @@ Die Nummer 305 sagt dem Modell noch nichts. Deshalb bekommt jedes Token eine **L
 Am Anfang des Trainings ist diese Landkarte **Zufall**. Das Modell lernt sie erst – du kannst in der App zuschauen,
 wie sich die Punkte im Training sortieren.
 
-#### Schritt 3 – Attention: „Worauf muss ich achten?“ &nbsp;(Ansicht **👁 Aufmerksamkeit**)
+#### Schritt 3 – Attention: „Worauf muss ich achten?“ &nbsp;(Ansicht **Aufmerksamkeit**)
 
 Das ist die Erfindung, die Modelle wie ChatGPT möglich gemacht hat. Lies diesen Satz:
 
@@ -234,13 +255,13 @@ Zwei Dinge sind wichtig:
 - **Nur zurückschauen:** Beim Vorhersagen darf ein Token die **Zukunft nicht sehen** (sonst wäre es geschummelt).
   Darum ist die obere rechte Hälfte der Heatmap immer leer (*Causal Mask*).
 
-#### Schritt 4 – Schichten stapeln &nbsp;(Seite **🧠 Modell**)
+#### Schritt 4 – Schichten stapeln &nbsp;(Seite **Modell**)
 
 Eine Runde Attention reicht nicht. Das Modell ist ein **Stapel aus mehreren gleichen Bausteinen** („Blöcken“), und jeder
 Block besteht aus Attention und einem kleinen Netz zum „Nachdenken“ (*MLP*). Mit jeder Schicht entstehen abstraktere
-Zusammenhänge: erst Buchstabenmuster, dann Wörter, dann Satzbau, dann Inhalte. Mein Modell hat 4 Schichten, GPT-3 hat 96.
+Zusammenhänge: erst Buchstabenmuster, dann Wörter, dann Satzbau, dann Inhalte. Das Standard-Modell hat 4 Schichten, GPT-3 hat 96.
 
-#### Schritt 5 – Vorhersagen und Würfeln &nbsp;(Seite **✨ Generieren**)
+#### Schritt 5 – Vorhersagen und Würfeln &nbsp;(Seite **Generieren**)
 
 Am Ende gibt das Modell für **jedes** Token im Vokabular eine Wahrscheinlichkeit aus (Beispielzahlen):
 
@@ -252,15 +273,19 @@ Am Ende gibt das Modell für **jedes** Token im Vokabular eine Wahrscheinlichkei
 | … 1020 weitere | zusammen 12 % |
 
 Dann wird **gewürfelt**, gewichtet nach diesen Chancen. Deshalb schreibt dasselbe Modell bei jedem Versuch etwas
-Anderes. Zwei Regler steuern das Würfeln:
+Anderes. Mehrere Regler steuern das Würfeln:
 
 - **Temperatur:** Niedrig (0.2) = vorsichtig, nimmt fast immer das wahrscheinlichste Token, wird aber schnell
   langweilig und wiederholt sich. Hoch (1.5) = mutig und kreativ, aber irgendwann unsinnig.
 - **Top-k / Top-p:** Schneiden die unwahrscheinlichsten Tokens ab, damit keine Ausreisser dabei sind.
+- **Min-p:** Behält nur Tokens, die mindestens einen Bruchteil (z. B. 5 %) so wahrscheinlich sind wie das beste.
+  Ist das Modell sicher, bleiben wenige übrig, ist es unsicher, viele. llama.cpp benutzt das standardmässig.
+- **Wiederholungs-Strafe:** Tokens, die gerade schon vorkamen, werden unwahrscheinlicher – gegen Endlosschleifen
+  wie „the the the“.
 
-### 3. Wie lernt das Modell? &nbsp;(Seite **🏋️ Training**)
+### 3. Wie lernt das Modell? &nbsp;(Seite **Training**)
 
-Das Modell besteht aus Millionen **Reglern** (den *Parametern*, bei meinem Modell 940'800). Am Anfang stehen sie alle auf
+Das Modell besteht aus Millionen **Reglern** (den *Parametern*, beim Standard-Modell 940'800). Am Anfang stehen sie alle auf
 Zufall, und das Modell rät wild. Das Lernen läuft immer gleich ab:
 
 1. **Ein Textstück zeigen** und das nächste Token abdecken.
@@ -290,7 +315,7 @@ steigt wieder. Das Diagramm „Lücke Val − Train“ zeigt das.
 
 ### 4. Vom Sprachmodell zum Chatbot
 
-Mein Modell ist ein **Basismodell**: Es setzt Texte fort, mehr nicht. ChatGPT entsteht in drei Stufen:
+Das Modell hier ist ein **Basismodell**: Es setzt Texte fort, mehr nicht. ChatGPT entsteht in drei Stufen:
 
 | Stufe | Was passiert | Beispiel in diesem Projekt |
 |---|---|---|
@@ -305,11 +330,11 @@ Wirklich nützliche Antworten brauchen aber ein viel grösseres Modell.
 
 | | Parameter | Trainingsdaten | Trainiert auf |
 |---|---|---|---|
-| **MiniLLM (dieses Projekt)** | ca. 1 Million | ca. 3 Mio. Tokens | Laptop-CPU, 10 Minuten |
+| **Magic LLM (dieses Projekt)** | ca. 1 Million | ca. 3 Mio. Tokens | Laptop-CPU, 10 Minuten |
 | GPT-2 (2019) | 124 Mio. bis 1.5 Mrd. | ca. 10 Mrd. Tokens | Rechen-Cluster |
 | GPT-3 (2020) | 175 Mrd. | ca. 300 Mrd. Tokens | tausende Grafikkarten, Wochen |
 
-Dieselbe Architektur, nur etwa **175'000-mal kleiner**. Deshalb lernt mein Modell Satzbau und kleine Geschichten, aber
+Dieselbe Architektur, nur etwa **175'000-mal kleiner**. Deshalb lernt das Modell hier Satzbau und kleine Geschichten, aber
 keine Fakten über die Welt. Je grösser Modell **und** Datenmenge, desto mehr „Fähigkeiten“ entstehen.
 
 ### 6. Mini-Experimente zum Selbermachen
@@ -318,15 +343,15 @@ Jedes dauert nur wenige Minuten. Schreib auf, was du beobachtest. Das eignet sic
 
 | # | Experiment | Wo | Was du siehst |
 |---|---|---|---|
-| 1 | **Vokabular-Grösse:** Daten mit 300 und mit 4096 Tokens vorbereiten | 📚 Daten, 🔤 Tokenizer | Bei grossem Vokabular werden die Texte kürzer (mehr Zeichen pro Token) |
-| 2 | **Tokenizer testen:** einen deutschen, einen englischen Satz und Code eingeben | 🔤 Tokenizer | Fremde Sprachen und Code zerfallen in viel mehr Stücke |
-| 3 | **Temperatur:** denselben Prompt mit 0.2, 0.8 und 1.6 erzeugen | ✨ Generieren | Von „langweilig & repetitiv“ bis „kreativ & chaotisch“ |
-| 4 | **Modell-Grösse:** „Winzig“ und „Mittel“ je 1500 Schritte trainieren | 🧠 Modell, 🏋️ Training | Das grössere Modell erreicht meist einen tieferen Loss, braucht aber länger |
-| 5 | **Lernrate kaputt machen:** auf 0.01 stellen | 🏋️ Training | Der Loss zappelt oder explodiert, die Gradienten-Kurve schlägt aus |
-| 6 | **Overfitting erzeugen:** nur 50 Dokumente, aber ein „Mittel“-Modell und viele Schritte | 📚 Daten, 🏋️ Training | Der Trainings-Loss sinkt, der Validierungs-Loss steigt wieder |
-| 7 | **Attention vorher/nachher:** Heatmap bei Schritt 0 und am Ende vergleichen | 🏋️ Training → 👁 | Erst gleichmässiges Grau, später Muster (z. B. Blick aufs vorige Wort) |
-| 8 | **Andere Daten:** dasselbe Modell mit „💻 Code“ und mit „🇩🇪 Deutsch“ trainieren | 📚 Daten | Es lernt die Eigenheiten der Daten: Einrückungen und Klammern bzw. deutsche Wörter |
-| 9 | **Wie sicher ist das Modell?** Einen Text erzeugen und das Diagramm ansehen | ✨ Generieren | An Satzanfängen und bei Namen ist es unsicher, mitten im Wort sehr sicher |
+| 1 | **Vokabular-Grösse:** Daten mit 300 und mit 4096 Tokens vorbereiten | Daten, Tokenizer | Bei grossem Vokabular werden die Texte kürzer (mehr Zeichen pro Token) |
+| 2 | **Tokenizer testen:** einen deutschen, einen englischen Satz und Code eingeben | Tokenizer | Fremde Sprachen und Code zerfallen in viel mehr Stücke |
+| 3 | **Temperatur:** denselben Prompt mit 0.2, 0.8 und 1.6 erzeugen | Generieren | Von „langweilig & repetitiv“ bis „kreativ & chaotisch“ |
+| 4 | **Modell-Grösse:** „Winzig“ und „Mittel“ je 1500 Schritte trainieren | Modell, Training | Das grössere Modell erreicht meist einen tieferen Loss, braucht aber länger |
+| 5 | **Lernrate kaputt machen:** auf 0.01 stellen | Training | Der Loss zappelt oder explodiert, die Gradienten-Kurve schlägt aus |
+| 6 | **Overfitting erzeugen:** nur 50 Dokumente, aber ein „Mittel“-Modell und viele Schritte | Daten, Training | Der Trainings-Loss sinkt, der Validierungs-Loss steigt wieder |
+| 7 | **Attention vorher/nachher:** Heatmap bei Schritt 0 und am Ende vergleichen | Training → Aufmerksamkeit | Erst gleichmässiges Grau, später Muster (z. B. Blick aufs vorige Wort) |
+| 8 | **Andere Daten:** dasselbe Modell mit „Code“ und mit „Deutsch“ trainieren | Daten | Es lernt die Eigenheiten der Daten: Einrückungen und Klammern bzw. deutsche Wörter |
+| 9 | **Wie sicher ist das Modell?** Einen Text erzeugen und das Diagramm ansehen | Generieren | An Satzanfängen und bei Namen ist es unsicher, mitten im Wort sehr sicher |
 
 ### 7. Glossar
 
@@ -357,7 +382,7 @@ Jedes dauert nur wenige Minuten. Schreib auf, was du beobachtest. Das eignet sic
   Backpropagation und Transformern.
 - **Jay Alammar – „The Illustrated Transformer“** (Blog). Der Klassiker zum Thema Attention mit vielen Bildern.
 - **Original-Paper:** *Attention Is All You Need* (2017), der Ursprung aller heutigen LLMs.
-- **Dieser Code:** [`minillm/model.py`](minillm/model.py) ist nur 172 Zeilen lang und kommentiert. Das
+- **Dieser Code:** [`magicllm/model.py`](magicllm/model.py) ist nur gut 170 Zeilen lang und kommentiert. Das
   ganze „Geheimnis“ steckt in diesen Zeilen.
 
 ## Technische Details (für Fortgeschrittene)
@@ -423,18 +448,20 @@ deutlich besser.
 ## Projektstruktur
 
 ```
-MiniLLM-Studio/
+magic-llm/
 ├── app.py                 # Streamlit-App (Einstieg)
 ├── train_cli.py           # Training ohne App
-├── minillm/               # der eigentliche Kern
+├── generate_cli.py        # Text erzeugen ohne App (wie llama-cli)
+├── magicllm/              # der eigentliche Kern
 │   ├── catalog.py         #   Katalog der 41 Hugging-Face-Datensätze
 │   ├── data.py            #   Daten laden, Tokenizer trainieren, Batches
 │   ├── tokenizer.py       #   BPE-Tokenizer (selbst gebaut)
 │   ├── model.py           #   GPT-Transformer (selbst gebaut)
 │   ├── device.py          #   GPU/CPU-Wahl, Mixed Precision, Auto-Batch
 │   ├── trainer.py         #   Trainings-Schleife mit Live-Metriken
-│   └── generate.py        #   Sampling (Temperatur, Top-k, Top-p)
-├── ui/                    # Seiten der App
+│   └── generate.py        #   Sampling (Temperatur, Top-k, Top-p, Min-p, Wiederholungs-Strafe)
+├── ui/                    # Seiten der App (common.py = Design-System)
+├── .streamlit/            # Theme
 ├── tests/                 # automatische Tests
 ├── tools/                 # Skript für die Screenshots
 └── docs/                  # Datensatz-Liste, Screenshots
@@ -448,7 +475,9 @@ python -m pytest
 
 Die Tests prüfen u. a. dass der Tokenizer verlustfrei ist (inkl. Umlaute und Emojis), dass die Attention wirklich
 „kausal“ ist (die Zukunft ändert die Vergangenheit nicht), dass die Parameter-Zählung stimmt und dass das Modell einen
-einzelnen Batch auswendig lernen kann (Beweis, dass Backpropagation funktioniert).
+einzelnen Batch auswendig lernen kann (Beweis, dass Backpropagation funktioniert). Dazu kommen Tests für Min-p und die
+Wiederholungs-Strafe, für korrekt gestreamte Umlaute, atomare Checkpoints, die Kommandozeile und dafür, dass die
+Oberfläche keine Emojis enthält.
 
 ## Quellen & Inspiration
 
@@ -458,6 +487,7 @@ einzelnen Batch auswendig lernen kann (Beweis, dass Backpropagation funktioniert
 - Sennrich et al., *Neural Machine Translation of Rare Words with Subword Units* (BPE, 2016)
 - Andrej Karpathy, *nanoGPT* und *Let's build GPT* (Inspiration für die Architektur)
 
-## Lizenz
+## Herkunft & Lizenz
 
-[MIT](LICENSE)
+Magic LLM basiert auf [MiniLLM Studio](https://github.com/sideforge/MiniLLM-Studio) von Joel Weber
+(Abschlussprojekt der WISS) und steht wie das Original unter der [MIT-Lizenz](LICENSE).

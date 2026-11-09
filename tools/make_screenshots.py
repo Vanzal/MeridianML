@@ -1,4 +1,4 @@
-"""Erzeugt die Screenshots für die README (braucht: pip install playwright, Google Chrome, laufende App).
+"""Magic LLM – erzeugt die Screenshots für die README (braucht: pip install playwright, Google Chrome, laufende App).
 
     streamlit run app.py            # in einem Terminal
     python tools/make_screenshots.py --dataset <name>   # im anderen
@@ -42,7 +42,10 @@ def main() -> None:
     ap.add_argument("--steps", type=int, default=300)
     args = ap.parse_args()
     with sync_playwright() as p:
-        browser = p.chromium.launch(channel="chrome", headless=True)
+        try:
+            browser = p.chromium.launch(channel="chrome", headless=True)
+        except Exception:                      # kein Google Chrome installiert -> Playwright-Chromium
+            browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1500, "height": 2300})
 
         for slug, name in [("", "01-start"), ("daten", "02-daten"), ("tokenizer", "03-tokenizer"),

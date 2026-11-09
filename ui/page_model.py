@@ -4,9 +4,10 @@ from __future__ import annotations
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+import torch
 
-from minillm import device as dev
-from minillm.model import GPT, GPTConfig
+from magicllm import device as dev
+from magicllm.model import GPT, GPTConfig
 from ui.common import PALETTE, fmt_int, hero, need_data, next_step, restore_state, save_state, style_fig
 
 PRESETS = {
@@ -44,39 +45,39 @@ def architecture_dot(cfg: GPTConfig) -> str:
     return f"""
 digraph G {{
   rankdir=BT; bgcolor="transparent"; nodesep=0.5; ranksep=0.32;
-  node [shape=box, style="rounded,filled", fillcolor="#161B26", color="#8892A6", fontcolor="#E6E9F0",
-        fontname="Helvetica", fontsize=12, margin="0.2,0.1", penwidth=1.4];
-  edge [color="#8892A6", penwidth=1.4, arrowsize=0.8];
+  node [shape=box, style="rounded,filled", fillcolor="#141414", color="#333333", fontcolor="#E5E5E5",
+        fontname="Helvetica", fontsize=12, margin="0.2,0.1", penwidth=1.2];
+  edge [color="#525252", penwidth=1.2, arrowsize=0.7];
 
-  inp  [label="Eingabe: Token-IDs\\n(höchstens {T} Tokens)", color="#22D3EE"];
-  emb  [label="Token-Embedding  ({V} × {d})\\n+ Positions-Embedding  ({T} × {d})", color="#22D3EE"];
+  inp  [label="Eingabe: Token-IDs\\n(höchstens {T} Tokens)", color="#60A5FA"];
+  emb  [label="Token-Embedding  ({V} × {d})\\n+ Positions-Embedding  ({T} × {d})", color="#60A5FA"];
   inp -> emb;
 
   subgraph cluster_block {{
-    label="{L} × Transformer-Block"; labeljust=l; fontcolor="#a99bff"; fontname="Helvetica-Bold"; fontsize=13;
-    color="#7C5CFF"; style="rounded,dashed"; penwidth=1.6;
+    label="{L} × Transformer-Block"; labeljust=l; fontcolor="#A3A3A3"; fontname="Helvetica-Bold"; fontsize=13;
+    color="#404040"; style="rounded,dashed"; penwidth=1.2;
     ln1 [label="LayerNorm"];
-    att [label="Causal Self-Attention\\n{H} Köpfe × {d // H} Dimensionen", color="#FB923C", penwidth=2];
-    add1 [label="+", shape=circle, width=0.3, fixedsize=true, fillcolor="#252C3D"];
+    att [label="Causal Self-Attention\\n{H} Köpfe × {d // H} Dimensionen", color="#F59E0B", penwidth=1.8];
+    add1 [label="+", shape=circle, width=0.3, fixedsize=true, fillcolor="#262626"];
     ln2 [label="LayerNorm"];
-    mlp [label="MLP\\n{d} → {4 * d} → {d}  (GELU)", color="#34D399", penwidth=2];
-    add2 [label="+", shape=circle, width=0.3, fixedsize=true, fillcolor="#252C3D"];
+    mlp [label="MLP\\n{d} → {4 * d} → {d}  (GELU)", color="#34D399", penwidth=1.8];
+    add2 [label="+", shape=circle, width=0.3, fixedsize=true, fillcolor="#262626"];
     ln1 -> att -> add1 -> ln2 -> mlp -> add2;
   }}
   emb -> ln1;
-  emb -> add1 [style=dashed, color="#7C5CFF", label=" Residual", fontcolor="#7C5CFF", fontsize=10, constraint=false];
-  add1 -> add2 [style=dashed, color="#7C5CFF", constraint=false];
+  emb -> add1 [style=dashed, color="#737373", label=" Residual", fontcolor="#737373", fontsize=10, constraint=false];
+  add1 -> add2 [style=dashed, color="#737373", constraint=false];
 
   lnf  [label="LayerNorm (final)"];
-  head [label="Linear  {d} → {V}\\n(teilt Gewichte mit dem Embedding)", color="#F472B6"];
-  out  [label="Softmax: Wahrscheinlichkeit für\\njedes mögliche nächste Token", color="#F472B6", penwidth=2];
+  head [label="Linear  {d} → {V}\\n(teilt Gewichte mit dem Embedding)", color="#A78BFA"];
+  out  [label="Softmax: Wahrscheinlichkeit für\\njedes mögliche nächste Token", color="#FAFAFA", penwidth=1.8];
   add2 -> lnf -> head -> out;
 }}
 """
 
 
 def render() -> None:
-    hero("🧠 Modell", "Ein GPT-Transformer. Stelle die Grösse ein und sieh sofort, wie viele Parameter er hat.")
+    hero("Modell", "Ein GPT-Transformer. Stelle die Grösse ein und sieh sofort, wie viele Parameter er hat.")
     meta = need_data()
     restore_state("model", DEFAULTS)
 
@@ -86,7 +87,7 @@ def render() -> None:
     pc = st.columns(len(PRESETS) + 1)
     for col, name in zip(pc, PRESETS):
         col.button(name, key=f"preset_{name}", on_click=_apply_preset, args=(name,), width="stretch")
-    pc[-1].button("🚀 GPU-Maximum", key="preset_gpumax", on_click=_apply_gpu_max, width="stretch", type="primary",
+    pc[-1].button("GPU-Maximum", key="preset_gpumax", on_click=_apply_gpu_max, width="stretch", type="primary",
                   disabled=not on_gpu,
                   help=("Wählt die grösste sinnvolle Modellgrösse für deinen Grafikspeicher, damit die GPU voll "
                         "ausgelastet ist." if on_gpu else "Keine GPU gefunden."))
@@ -109,12 +110,13 @@ def render() -> None:
         save_state("model")
 
     cfg = model_config(meta["vocab_size"])
-    model = GPT(cfg)
+    with torch.device("meta"):      # nur Formen, kein Speicher: auch 200-Mio.-Modelle zählen sofort
+        model = GPT(cfg)
     n = model.num_params()
 
     with right:
         st.subheader("Architektur")
-        st.graphviz_chart(architecture_dot(cfg), width="stretch")
+        st.graphviz_chart(architecture_dot(cfg), width="content")
 
     c = st.columns(4)
     c[0].metric("Parameter", fmt_int(n), help=f"Genau: {n:,}")
@@ -138,13 +140,13 @@ def render() -> None:
     df = pd.DataFrame({"Bauteil": list(bd), "Parameter": list(bd.values())})
     a, b = st.columns(2)
     fig = px.pie(df, names="Bauteil", values="Parameter", hole=0.5, title="Anteile")
-    fig.update_traces(marker=dict(line=dict(color="#0E1117", width=2)))
+    fig.update_traces(marker=dict(line=dict(color="#0A0A0A", width=2)))
     a.plotly_chart(style_fig(fig, 320), width="stretch")
     fig = px.bar(df[::-1], x="Parameter", y="Bauteil", orientation="h", title="Anzahl")
-    fig.update_traces(marker_color=PALETTE["violet"])
+    fig.update_traces(marker_color=PALETTE["fg"])
     b.plotly_chart(style_fig(fig, 320, legend=False), width="stretch")
     st.caption("Bei kleinen Modellen mit grossem Vokabular steckt ein Grossteil der Parameter im Embedding. "
                "Bei grösseren Modellen dominieren Attention + MLP.")
 
     st.divider()
-    next_step("train", "Weiter zum Training", "🏋️")
+    next_step("train", "Weiter zum Training")

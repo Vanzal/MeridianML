@@ -1,10 +1,32 @@
+# Magic LLM – neutrales, monochromes Dark-Theme (angelehnt an die llama.cpp-WebUI und das omp-Terminal).
 [theme]
 base = "dark"
-primaryColor = "#7C5CFF"
-backgroundColor = "#0E1117"
-secondaryBackgroundColor = "#161B26"
-textColor = "#E6E9F0"
-font = "sans serif"
+primaryColor = "#FAFAFA"
+backgroundColor = "#0A0A0A"
+secondaryBackgroundColor = "#171717"
+textColor = "#FAFAFA"
+linkColor = "#E5E5E5"
+borderColor = "#262626"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "0.5rem"
+buttonRadius = "0.5rem"
+baseFontSize = 14
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap, ui-sans-serif, system-ui, sans-serif"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+codeBackgroundColor = "#141414"
+headingFontWeights = [600, 600, 600, 600, 600, 600]
+metricValueFontWeight = 500
+dataframeHeaderBackgroundColor = "#141414"
+chartCategoricalColors = ["#E5E5E5", "#60A5FA", "#F59E0B", "#34D399", "#F472B6", "#A78BFA", "#737373"]
+greenColor = "#34D399"
+redColor = "#F87171"
+orangeColor = "#F59E0B"
+blueColor = "#60A5FA"
+
+[theme.sidebar]
+backgroundColor = "#0F0F0F"
+secondaryBackgroundColor = "#171717"
 
 [server]
 headless = true
@@ -12,3 +34,6 @@ runOnSave = false
 
 [browser]
 gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"

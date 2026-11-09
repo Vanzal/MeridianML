@@ -1,4 +1,4 @@
-"""Training ohne App (Kommandozeile).
+"""Magic LLM – Training ohne App (Kommandozeile).
 
 Beispiel:
     python train_cli.py --datasets tinystories=2000 shakespeare=200 --steps 500 --name test
@@ -8,11 +8,11 @@ from __future__ import annotations
 import argparse
 import time
 
-from minillm.catalog import BY_KEY
-from minillm.data import load_selection, prepare, prepared_path
-from minillm.generate import generate_text
-from minillm.model import GPT, GPTConfig
-from minillm.trainer import TrainConfig, Trainer
+from magicllm.catalog import BY_KEY
+from magicllm.data import load_selection, prepare, prepared_path, safe_name
+from magicllm.generate import generate_text
+from magicllm.model import GPTConfig
+from magicllm.trainer import TrainConfig, Trainer
 
 
 def main() -> None:
@@ -31,6 +31,7 @@ def main() -> None:
     ap.add_argument("--no-amp", action="store_true", help="Mixed Precision ausschalten")
     ap.add_argument("--lr", type=float, default=3e-3)
     args = ap.parse_args()
+    args.name = safe_name(args.name)
 
     selection = {k: int(n) for k, n in (s.split("=") for s in args.datasets)}
     print("Lade Datensätze:", selection)
@@ -56,7 +57,8 @@ def main() -> None:
     if tr.status == "fehler":
         raise SystemExit(tr.error)
     print("Fertig:", tr.status, "| bester Val-Loss:", round(tr.best_val, 3))
-    print("Beispiel:", generate_text(tr.model, tr.tok, "Once upon a time", max_new_tokens=60))
+    print("Beispiel:", generate_text(tr.model, tr.tok, "Once upon a time", max_new_tokens=60, stop_at_eot=True))
+    print(f"Weiter mit:  python generate_cli.py -m {args.name} -p \"Once upon a time\"")
 
 
 if __name__ == "__main__":

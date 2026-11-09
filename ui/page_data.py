@@ -1,12 +1,14 @@
 """Seite 1: Datensätze aus dem Hugging-Face-Katalog auswählen, laden und vorbereiten."""
 from __future__ import annotations
 
+import html
+
 import plotly.express as px
 import streamlit as st
 
-from minillm import custom
-from minillm.catalog import BY_KEY, CATALOG, iter_texts
-from minillm.data import list_prepared, load_selection, prepare, safe_name
+from magicllm import custom
+from magicllm.catalog import BY_KEY, CATALOG, iter_texts
+from magicllm.data import list_prepared, load_selection, prepare, safe_name
 from ui.common import fmt_int, hero, next_step, style_fig
 
 DIFF_CLASS = {"sehr leicht": "good", "leicht": "good", "mittel": "", "schwer": "warn", "sehr schwer": "warn", "unbekannt": ""}
@@ -21,10 +23,10 @@ def _card(info) -> None:
         tags = "".join(f'<span class="tag {"good" if t in ("empfohlen", "schnell") else ""}">{t}</span>'
                        for t in info.tags)
         c2.markdown(
-            f"**{info.title}** &nbsp; <span class='tag'>{info.category}</span>"
+            f"**{html.escape(info.title)}** &nbsp; <span class='tag'>{html.escape(info.category)}</span>"
             f"<span class='tag'>{LANG_LABEL[info.language]}</span>"
             f"<span class='tag {DIFF_CLASS.get(info.difficulty, '')}'>{info.difficulty}</span>{tags}<br>"
-            f"<span class='muted'>{info.description}</span><br>"
+            f"<span class='muted'>{html.escape(info.description)}</span><br>"
             f"<span class='muted' style='font-size:.78rem'>{info.size_hint} · "
             f"<a href='{info.url}' target='_blank'>{info.hf_path}</a></span>",
             unsafe_allow_html=True,
@@ -33,7 +35,7 @@ def _card(info) -> None:
                         key=f"n_{key}", disabled=not on,
                         help="Wie viele Dokumente (Zeilen) geladen werden. Ab ca. 200 000 braucht das viel Arbeitsspeicher "
                              "und Zeit – mehr Daten machen das Modell aber deutlich stärker.")
-        if key.startswith("custom_") and c3.button("🗑 entfernen", key=f"rm_{key}"):
+        if key.startswith("custom_") and c3.button("Entfernen", key=f"rm_{key}", icon=":material/delete:"):
             custom.remove_custom(key)
             st.session_state[f"on_{key}"] = False
             st.rerun()
@@ -59,12 +61,14 @@ def _save() -> None:
 
 
 MIXES = {
-    "📖 Geschichten (schnell)": {"tinystories": 5000},
-    "💻 Code": {"codeparrot": 4000, "magicoder": 4000, "code_alpaca": 2000},
-    "🇩🇪 Deutsch": {"fineweb2_de": 4000, "wikipedia_de": 2000, "tagesschau": 2000},
-    "🌍 Wissen & Text": {"cosmopedia_v2": 3000, "fineweb_edu": 2000, "gutenberg": 300},
-    "🧪 Text + Code": {"cosmopedia_v2": 3000, "codeparrot": 3000, "tinystories": 2000},
+    "Geschichten (schnell)": {"tinystories": 5000},
+    "Code": {"codeparrot": 4000, "magicoder": 4000, "code_alpaca": 2000},
+    "Deutsch": {"fineweb2_de": 4000, "wikipedia_de": 2000, "tagesschau": 2000},
+    "Wissen & Text": {"cosmopedia_v2": 3000, "fineweb_edu": 2000, "gutenberg": 300},
+    "Text + Code": {"cosmopedia_v2": 3000, "codeparrot": 3000, "tinystories": 2000},
 }
+MIX_ICONS = {"Geschichten (schnell)": ":material/auto_stories:", "Code": ":material/code:", "Deutsch": ":material/translate:",
+             "Wissen & Text": ":material/school:", "Text + Code": ":material/join:"}
 
 
 def _apply_mix(name: str) -> None:
@@ -114,7 +118,7 @@ TASKS = {"Alle": None, "Text erzeugen": "task_categories:text-generation",
 
 
 def _custom_section() -> None:
-    with st.expander("➕ Eigenen Hugging-Face-Datensatz hinzufügen – beliebige Texte, Code, Wissen …", expanded=False):
+    with st.expander("Eigenen Hugging-Face-Datensatz hinzufügen – beliebige Texte, Code, Wissen …", expanded=False):
         st.caption("Es geht jeder öffentliche Datensatz von huggingface.co (im Parquet-Format). Du suchst, prüfst die Spalten "
                    "und fügst ihn dem Katalog hinzu. Er wird wie alle anderen geladen, gemischt und trainiert.")
         if pick := st.session_state.pop("_cd_pick", None):
@@ -122,7 +126,7 @@ def _custom_section() -> None:
         c1, c2, c3 = st.columns([0.5, 0.3, 0.2], vertical_alignment="bottom")
         query = c1.text_input("Im Hub suchen", key="cd_query", placeholder="z. B. python code, german news, math, wikipedia")
         task = c2.selectbox("Art", list(TASKS), key="cd_task")
-        searching = c3.button("🔎 Suchen", width="stretch")
+        searching = c3.button("Suchen", width="stretch", icon=":material/search:")
         if searching or st.session_state.get("cd_searched"):
             st.session_state["cd_searched"] = True
             res = _hub_search(query, TASKS[task])
@@ -131,7 +135,7 @@ def _custom_section() -> None:
             elif res:
                 import pandas as pd
                 df = pd.DataFrame([{"Datensatz": r["id"], "Downloads": r["downloads"], "Likes": r["likes"],
-                                    "Gesperrt": "🔒" if r["gated"] else "", "Themen": ", ".join(r["tags"])} for r in res])
+                                    "Gesperrt": "ja" if r["gated"] else "", "Themen": ", ".join(r["tags"])} for r in res])
                 ev = st.dataframe(df, hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row",
                                   key="cd_table", height=260)
                 rows = ev.selection.rows if ev and ev.selection else []
@@ -140,7 +144,7 @@ def _custom_section() -> None:
                     if chosen_repo != st.session_state.get("cd_repo"):
                         st.session_state["_cd_pick"] = chosen_repo
                         st.rerun()
-                st.caption("Zeile anklicken, um den Datensatz unten zu übernehmen. 🔒 = gesperrt (Anmeldung nötig).")
+                st.caption("Zeile anklicken, um den Datensatz unten zu übernehmen. „Gesperrt = ja“ heisst: Anmeldung bei Hugging Face nötig.")
             else:
                 st.info("Nichts gefunden.")
 
@@ -182,8 +186,8 @@ def _custom_section() -> None:
             fmt = custom.make_formatter(chosen, headings)
             sample = fmt(probe["rows"][0])
             st.write("**Vorschau – so sieht ein Trainingsdokument aus:**")
-            st.markdown(f'<div class="sample">{sample[:1200].replace("<", "&lt;")}</div>', unsafe_allow_html=True)
-        if st.button("✅ Zum Katalog hinzufügen", type="primary", disabled=not chosen):
+            st.markdown(f'<div class="sample">{html.escape(sample[:1200])}</div>', unsafe_allow_html=True)
+        if st.button("Zum Katalog hinzufügen", type="primary", disabled=not chosen, icon=":material/add:"):
             info = custom.add_custom(repo, chosen, probe["config"] if probe["configs"] else None, probe["split"],
                                      headings, max_chars=int(max_chars) or None)
             st.session_state.setdefault("data_sel", {})[f"on_{info.key}"] = True
@@ -193,25 +197,25 @@ def _custom_section() -> None:
 
 
 def render() -> None:
-    hero("📚 Daten", "Wähle einen oder mehrere Datensätze von Hugging Face. Sie werden gemischt und zum Training vorbereitet.")
+    hero("Daten", "Wähle einen oder mehrere Datensätze von Hugging Face. Sie werden gemischt und zum Training vorbereitet.")
     if msg := st.session_state.pop("flash", None):
-        st.success(msg)
+        st.success(msg, icon=":material/check_circle:")
         c1, c2, c3 = st.columns(3)
         with c1:
-            next_step("train", "Direkt zum Training", "🏋️")
+            next_step("train", "Direkt zum Training", ":material/monitoring:")
         with c2:
-            next_step("model", "Modell einstellen", "🧠")
+            next_step("model", "Modell einstellen", ":material/account_tree:")
         with c3:
-            next_step("tokenizer", "Tokenizer ansehen", "🔤")
+            next_step("tokenizer", "Tokenizer ansehen", ":material/data_array:")
 
     st.write("**Fertige Mischungen (ein Klick):**")
     mc = st.columns(len(MIXES))
     for col, name in zip(mc, MIXES):
-        col.button(name, key=f"mix_{name}", on_click=_apply_mix, args=(name,), width="stretch")
+        col.button(name, key=f"mix_{name}", on_click=_apply_mix, args=(name,), width="stretch", icon=MIX_ICONS[name])
 
     _custom_section()
 
-    with st.expander("🔎 Filter", expanded=False):
+    with st.expander("Filter", expanded=False, icon=":material/filter_list:"):
         f1, f2, f3 = st.columns(3)
         cats = f1.multiselect("Kategorie", sorted({d.category for d in CATALOG}), default=[])
         langs = f2.multiselect("Sprache", list(LANG_LABEL.values()), default=[])
@@ -238,17 +242,17 @@ def render() -> None:
             st.info("Hake links mindestens einen Datensatz an.")
         else:
             fig = px.pie(names=[BY_KEY[k].title for k in selection], values=list(selection.values()), hole=0.55)
-            fig.update_traces(textinfo="percent", marker=dict(line=dict(color="#0E1117", width=2)))
+            fig.update_traces(textinfo="percent", marker=dict(line=dict(color="#0A0A0A", width=2)))
             st.plotly_chart(style_fig(fig, 260, legend=True), width="stretch")
             st.caption(f"**{sum(selection.values()):,}** Dokumente aus **{len(selection)}** Datensätzen")
 
-            with st.expander("👀 Vorschau (je 2 Beispiele von Hugging Face)"):
+            with st.expander("Vorschau (je 2 Beispiele von Hugging Face)", icon=":material/visibility:"):
                 if st.button("Beispiele laden", key="preview"):
                     for k in selection:
                         st.markdown(f"**{BY_KEY[k].title}**")
                         try:
                             for t in iter_texts(BY_KEY[k], 2):
-                                st.markdown(f'<div class="sample">{t[:500].replace("<", "&lt;")}</div>',
+                                st.markdown(f'<div class="sample">{html.escape(t[:500])}</div>',
                                             unsafe_allow_html=True)
                         except Exception as e:
                             st.error(f"Konnte nicht laden: {e}")
@@ -256,12 +260,15 @@ def render() -> None:
         st.divider()
         st.subheader("Vorbereiten")
         name = st.text_input("Name des Datensatzes", value="mein-datensatz", key="prep_name")
+        if safe_name(name) in {m["name"] for m in list_prepared()}:
+            st.caption(f"Hinweis: **{safe_name(name)}** existiert schon und wird überschrieben.")
         vocab = st.select_slider("Vokabular-Grösse (Tokenizer)", options=[300, 512, 768, 1024, 1536, 2048, 3072, 4096, 8192, 16384, 32768],
                                  value=1024, help="Anzahl verschiedener Tokens. Grösser = kürzere Sequenzen, aber "
                                                   "mehr Parameter im Embedding.")
         val_frac = st.slider("Anteil Validierungsdaten", 0.02, 0.20, 0.05, 0.01,
                              help="Diese Texte sieht das Modell beim Training nie – damit prüfen wir, ob es wirklich lernt.")
-        go = st.button("🚀 Laden & vorbereiten", type="primary", disabled=not selection, width="stretch")
+        go = st.button("Laden & vorbereiten", type="primary", disabled=not selection, width="stretch",
+                       icon=":material/download:")
 
     if go:
         _prepare(name, selection, vocab, val_frac)
@@ -275,7 +282,7 @@ def render() -> None:
                  "Zeichen/Token": round(m["chars_per_token"], 2), "Erstellt": m["created"]} for m in prepared]
         st.dataframe(rows, width="stretch", hide_index=True)
         st.caption("Gewählter Datensatz = Auswahl links in der Seitenleiste.")
-        next_step("train", "Weiter zum Training", "🏋️")
+        next_step("train", "Weiter zum Training")
 
 
 def _prepare(name: str, selection: dict[str, int], vocab: int, val_frac: float) -> None:
@@ -303,13 +310,18 @@ def _prepare(name: str, selection: dict[str, int], vocab: int, val_frac: float) 
 
         def on_tok(m: int, total: int, token: bytes) -> None:
             tbar.progress(m / total, text=f"Merge {m}/{total}")
-            last.caption("Neuestes Token: `" + token.decode("utf-8", errors="replace").replace("\n", "⏎") + "`")
+            last.caption("Neuestes Token: `" + token.decode("utf-8", errors="replace").replace("\n", "⏎").replace("`", "'") + "`")
 
         st.write("**3/3 · Texte in Token-IDs umwandeln**")
         ebar = st.progress(0.0)
-        meta = prepare(name, docs, vocab, val_fraction=val_frac, tok_progress=on_tok,
-                       enc_progress=lambda i, n: ebar.progress(i / n, text=f"{i}/{n} Dokumente"))
+        try:
+            meta = prepare(name, docs, vocab, val_fraction=val_frac, tok_progress=on_tok,
+                           enc_progress=lambda i, n: ebar.progress(i / n, text=f"{i}/{n} Dokumente"))
+        except Exception as e:
+            status.update(label="Fehler beim Vorbereiten", state="error")
+            st.error(f"{type(e).__name__}: {e}")
+            return
         status.update(label=f"Fertig: {fmt_int(meta['tokens_train'])} Trainings-Tokens", state="complete")
     st.session_state["pending_active"] = meta["name"]
-    st.session_state["flash"] = f"Datensatz **{meta['name']}** ist bereit. Weiter geht's bei 🔤 Tokenizer oder 🧠 Modell."
+    st.session_state["flash"] = f"Datensatz **{meta['name']}** ist bereit. Weiter geht's bei Tokenizer oder Modell."
     st.rerun()

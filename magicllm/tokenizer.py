@@ -22,6 +22,7 @@ _PRETOKEN = re.compile(r"""'(?:s|t|re|ve|m|ll|d)| ?[^\W\d_]+| ?\d+| ?[^\s\w]+|\s
 class BPETokenizer:
     def __init__(self, merges: list[tuple[int, int]] | None = None):
         self.merges: list[tuple[int, int]] = merges or []
+        self.merge_counts: list[int] = []   # nur nach train() gefüllt, wird nicht gespeichert
         self._rebuild()
 
     # ------------------------------------------------------------------ Aufbau
@@ -58,6 +59,7 @@ class BPETokenizer:
 
         merges: list[tuple[int, int]] = []
         vocab = [bytes([i]) for i in range(256)]
+        merge_counts: list[int] = []         # wie oft das Paar beim Verschmelzen vorkam (für die App)
         # Das häufigste Paar kommt aus einem Heap (statt jedes Mal alle Paare zu durchsuchen): so bleibt auch ein
         # Vokabular von 32'000 Tokens schnell. Veraltete Heap-Einträge werden beim Herausnehmen aussortiert.
         heap = [(-c, a, b) for (a, b), c in pair_counts.items()]
@@ -75,6 +77,7 @@ class BPETokenizer:
             if best is None or pair_counts[best] < 2:
                 break
             new_id = 256 + m
+            merge_counts.append(pair_counts[best])
             merges.append(best)
             vocab.append(vocab[best[0]] + vocab[best[1]])
             touched: set[tuple[int, int]] = set()
@@ -106,7 +109,9 @@ class BPETokenizer:
                     heapq.heappush(heap, (-c, p[0], p[1]))
             if progress and (m % 25 == 0 or m == n_merges - 1):
                 progress(m + 1, n_merges, vocab[-1])
-        return cls(merges)
+        tok = cls(merges)
+        tok.merge_counts = merge_counts
+        return tok
 
     # ---------------------------------------------------------------- Encoding
     def _encode_word(self, word: str) -> list[int]:
@@ -146,6 +151,10 @@ class BPETokenizer:
             elif 0 <= i < len(self.vocab):
                 buf.extend(self.vocab[i])
         return buf.decode("utf-8", errors="replace")
+
+    def token_bytes(self, i: int) -> bytes:
+        """Die rohen Bytes eines Tokens (das End-Token hat keine)."""
+        return b"" if i == self.eot_id else self.vocab[i]
 
     def token_str(self, i: int) -> str:
         """Lesbare Darstellung eines einzelnen Tokens (für Diagramme)."""

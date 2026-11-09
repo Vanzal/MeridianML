@@ -1,17 +1,37 @@
 """Text erzeugen: Token für Token das nächste Wort aus der Wahrscheinlichkeitsverteilung ziehen."""
 from __future__ import annotations
 
-from typing import Iterator
+import codecs
+from typing import Iterable, Iterator
 
 import torch
 import torch.nn.functional as F
 
 from .model import GPT
-from .tokenizer import BPETokenizer
+from .tokenizer import EOT, BPETokenizer
 
 
-def filter_logits(logits: torch.Tensor, temperature: float, top_k: int, top_p: float) -> torch.Tensor:
-    """Temperatur, Top-k und Top-p (Nucleus) anwenden. Gibt Wahrscheinlichkeiten zurück."""
+def apply_repeat_penalty(logits: torch.Tensor, recent: Iterable[int], penalty: float) -> torch.Tensor:
+    """Wiederholungs-Strafe wie in llama.cpp (``--repeat-penalty``): Tokens, die gerade schon vorkamen, werden
+    unwahrscheinlicher. Positive Logits werden durch ``penalty`` geteilt, negative damit multipliziert."""
+    if penalty == 1.0:
+        return logits
+    ids = torch.tensor(sorted(set(int(i) for i in recent)), dtype=torch.long)
+    if ids.numel() == 0:
+        return logits
+    logits = logits.clone()
+    vals = logits[ids]
+    logits[ids] = torch.where(vals > 0, vals / penalty, vals * penalty)
+    return logits
+
+
+def filter_logits(logits: torch.Tensor, temperature: float, top_k: int, top_p: float,
+                  min_p: float = 0.0) -> torch.Tensor:
+    """Temperatur, Top-k, Top-p (Nucleus) und Min-p anwenden. Gibt Wahrscheinlichkeiten zurück.
+
+    Min-p (wie in llama.cpp): Es bleiben nur Tokens, deren Wahrscheinlichkeit mindestens ``min_p`` mal so gross
+    ist wie die des besten Tokens. Das passt sich automatisch an: bei einem sicheren Modell bleiben wenige übrig,
+    bei einem unsicheren viele."""
     logits = logits / max(temperature, 1e-4)
     if top_k and top_k > 0:
         kth = torch.topk(logits, min(top_k, logits.size(-1))).values[..., -1, None]
@@ -24,16 +44,25 @@ def filter_logits(logits: torch.Tensor, temperature: float, top_k: int, top_p: f
         sorted_p = sorted_p.masked_fill(remove, 0.0)
         probs = torch.zeros_like(probs).scatter(-1, sorted_i, sorted_p)
         probs = probs / probs.sum(dim=-1, keepdim=True)
+    if 0.0 < min_p < 1.0:
+        keep = probs >= min_p * probs.max(dim=-1, keepdim=True).values
+        probs = probs * keep
+        probs = probs / probs.sum(dim=-1, keepdim=True)
     return probs
 
 
 @torch.no_grad()
 def stream_generate(model: GPT, tok: BPETokenizer, prompt: str, max_new_tokens: int = 100,
                     temperature: float = 0.8, top_k: int = 40, top_p: float = 1.0,
-                    seed: int | None = None) -> Iterator[tuple[int, str, torch.Tensor, torch.Tensor]]:
+                    seed: int | None = None, min_p: float = 0.0, repeat_penalty: float = 1.0,
+                    repeat_last_n: int = 64) -> Iterator[tuple[int, str, torch.Tensor, torch.Tensor]]:
     """Erzeugt Tokens einzeln. Liefert (token_id, text, probs, raw_probs) pro Schritt.
 
     ``probs`` = Verteilung nach Filter, ``raw_probs`` = Verteilung ohne Temperatur/Filter.
+
+    Der Text wird mit einem inkrementellen UTF-8-Decoder erzeugt: Ein Umlaut wie „ä“ besteht aus zwei Bytes und
+    kann auf zwei Tokens verteilt sein. Dann liefert das erste Token "" und das zweite das ganze Zeichen
+    (statt zweimal „�“). Das End-Token liefert immer "".
     """
     was_training = model.training
     model.eval()
@@ -41,22 +70,42 @@ def stream_generate(model: GPT, tok: BPETokenizer, prompt: str, max_new_tokens: 
     device = next(model.parameters()).device
     ids = tok.encode(prompt) or [tok.eot_id]
     x = torch.tensor([ids], dtype=torch.long, device=device)
+    history = list(ids)
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
     try:
-        for _ in range(max_new_tokens):
+        for step in range(max_new_tokens):
             ctx = x[:, -model.cfg.block_size:]
             logits, _ = model(ctx)
             last = logits[0, -1].float().cpu()          # Würfeln passiert auf der CPU (nur ein Vokabular-Vektor)
             raw = F.softmax(last, dim=-1)
-            probs = filter_logits(last, temperature, top_k, top_p)
-            nxt = torch.multinomial(probs, 1, generator=gen)
-            x = torch.cat([x, nxt.view(1, 1).to(device)], dim=1)
-            yield int(nxt), tok.decode([int(nxt)]), probs, raw
+            if repeat_penalty != 1.0 and repeat_last_n > 0:
+                last = apply_repeat_penalty(last, history[-repeat_last_n:], repeat_penalty)
+            probs = filter_logits(last, temperature, top_k, top_p, min_p)
+            nxt = int(torch.multinomial(probs, 1, generator=gen))
+            x = torch.cat([x, torch.tensor([[nxt]], device=device)], dim=1)
+            history.append(nxt)
+            if nxt == tok.eot_id:
+                piece = decoder.decode(b"", final=True)      # angefangene Zeichen abschliessen
+                decoder.reset()
+            else:                                             # letzter Schritt: angefangene Zeichen abschliessen
+                piece = decoder.decode(tok.token_bytes(nxt), final=step == max_new_tokens - 1)
+            yield nxt, piece, probs, raw
     finally:
         model.train(was_training)
 
 
-def generate_text(model: GPT, tok: BPETokenizer, prompt: str = "", **kw) -> str:
-    out = [t for _, t, _, _ in stream_generate(model, tok, prompt, **kw)]
+def generate_text(model: GPT, tok: BPETokenizer, prompt: str = "", stop_at_eot: bool = False, **kw) -> str:
+    """Ganzen Text erzeugen. Das End-Token erscheint als ``<|endoftext|>`` (oder beendet den Text, wenn
+    ``stop_at_eot`` gesetzt ist)."""
+    out = []
+    for tid, piece, _, _ in stream_generate(model, tok, prompt, **kw):
+        if tid == tok.eot_id:
+            out.append(piece)
+            if stop_at_eot:
+                break
+            out.append(EOT)
+            continue
+        out.append(piece)
     return prompt + "".join(out)
 
 

@@ -2,9 +2,9 @@
 import numpy as np
 import torch
 
-from minillm.generate import filter_logits, generate_text
-from minillm.model import GPT, GPTConfig
-from minillm.tokenizer import EOT, BPETokenizer
+from magicllm.generate import filter_logits, generate_text
+from magicllm.model import GPT, GPTConfig
+from magicllm.tokenizer import EOT, BPETokenizer
 
 CORPUS = ["the cat sat on the mat. the dog sat on the log.\n" * 20,
           "    def add(a, b):\n        return a + b\n" * 10, "Grüezi! Äpfel & Öl 123 🙂"]
@@ -97,7 +97,7 @@ def test_generate_text_runs():
 
 # ----------------------------------------------------------------- Gerät / GPU
 def test_device_selection_falls_back_to_cpu():
-    from minillm import device as dev
+    from magicllm import device as dev
     assert dev.pick_device("cpu").type == "cpu"
     d = dev.pick_device("auto")                      # auf einem Rechner ohne GPU: CPU, sonst die GPU
     assert d.type in ("cpu", "cuda", "xpu", "mps")
@@ -108,13 +108,13 @@ def test_device_selection_falls_back_to_cpu():
 
 
 def test_find_max_batch_on_cpu_returns_start():
-    from minillm import device as dev
+    from magicllm import device as dev
     assert dev.find_max_batch(small_model, 16, 300, torch.device("cpu"), start=16) == 16
 
 
 def test_gpu_batcher_indexing_matches_cpu_path(tmp_path):
     """Der GPU-Weg (Daten als Tensor, Fenster per Index) muss dasselbe liefern wie der CPU-Weg (hier auf CPU simuliert)."""
-    from minillm.data import Batcher
+    from magicllm.data import Batcher
     ids = (np.arange(500) % 251).astype(np.uint16)
     ids.tofile(tmp_path / "train.bin")
     ids[:100].tofile(tmp_path / "val.bin")
@@ -129,10 +129,10 @@ def test_gpu_batcher_indexing_matches_cpu_path(tmp_path):
 def test_short_training_run_with_auto_batch(tmp_path, monkeypatch):
     """Ganzer Trainer-Durchlauf (CPU), inkl. Auto-Batch und gepufferten Metriken."""
     import time
-    from minillm import trainer as trainer_mod
-    from minillm.data import prepare
+    from magicllm import trainer as trainer_mod
+    from magicllm.data import prepare
     monkeypatch.setattr(trainer_mod, "RUNS_DIR", tmp_path / "runs")
-    monkeypatch.setattr("minillm.data.PREPARED_DIR", tmp_path / "prepared")
+    monkeypatch.setattr("magicllm.data.PREPARED_DIR", tmp_path / "prepared")
     docs = {"x": [CORPUS[0], CORPUS[1], CORPUS[2]] * 12}
     meta = prepare("t", docs, 300)
     cfg = GPTConfig(vocab_size=meta["vocab_size"], block_size=16, n_layer=1, n_head=2, n_embd=32)
@@ -149,7 +149,7 @@ def test_short_training_run_with_auto_batch(tmp_path, monkeypatch):
 
 
 def test_gpu_helpers_degrade_gracefully_without_gpu():
-    from minillm import device as dev
+    from magicllm import device as dev
     cpu = torch.device("cpu")
     assert dev.can_compile(cpu) is False
     if not torch.cuda.is_available():
@@ -157,7 +157,7 @@ def test_gpu_helpers_degrade_gracefully_without_gpu():
 
 
 def test_suggest_model_scales_with_gpu_memory():
-    from minillm import device as dev
+    from magicllm import device as dev
     sizes = [GPT.estimate_params(GPTConfig(vocab_size=2048, **{k.replace("m_", "n_").replace("n_embd", "n_embd"): v
                                                                 for k, v in dev.suggest_model(m).items()
                                                                 if k != "m_block"}, block_size=dev.suggest_model(m)["m_block"]))
@@ -171,7 +171,7 @@ def test_suggest_model_scales_with_gpu_memory():
 def naive_bpe(texts, n_merges):
     """Langsame, aber offensichtlich richtige Referenz: zählt vor jedem Merge alle Paare neu."""
     from collections import Counter
-    from minillm.tokenizer import _PRETOKEN
+    from magicllm.tokenizer import _PRETOKEN
     wc = Counter(w for t in texts for w in _PRETOKEN.findall(t))
     words = {w: list(w.encode()) for w in wc}
     merges = []
@@ -211,7 +211,7 @@ def test_heap_bpe_matches_naive_reference():
 
 # ---------------------------------------------------------- Eigene Datensätze
 def test_render_value_handles_chat_lists_and_nesting():
-    from minillm.catalog import render_value
+    from magicllm.catalog import render_value
     chat = [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hallo"}]
     assert render_value(chat) == "### Frage:\nHi\n### Antwort:\nHallo"
     sharegpt = [{"from": "human", "value": "A"}, {"from": "gpt", "value": "B"}]
@@ -220,7 +220,7 @@ def test_render_value_handles_chat_lists_and_nesting():
 
 
 def test_detect_columns_prefers_text_chat_and_qa_pairs():
-    from minillm.custom import detect_columns
+    from magicllm.custom import detect_columns
     assert detect_columns({"id": "1", "text": "hello world, a long text", "url": "x"}) == ["text"]
     assert detect_columns({"prompt_id": "x", "messages": [{"role": "user", "content": "a"}]}) == ["messages"]
     assert detect_columns({"instruction": "do it", "output": "done", "id": 3}) == ["instruction", "output"]
@@ -229,8 +229,8 @@ def test_detect_columns_prefers_text_chat_and_qa_pairs():
 
 
 def test_custom_dataset_roundtrip(tmp_path, monkeypatch):
-    from minillm import custom
-    from minillm.catalog import BY_KEY, CATALOG
+    from magicllm import custom
+    from magicllm.catalog import BY_KEY, CATALOG
     monkeypatch.setattr(custom, "CUSTOM_FILE", tmp_path / "custom.json")
     n = len(CATALOG)
     info = custom.add_custom("someone/some-data", ["question", "answer"], None, "train", headings=True, max_chars=500)
@@ -246,14 +246,14 @@ def test_custom_dataset_roundtrip(tmp_path, monkeypatch):
 
 
 def test_friendly_errors():
-    from minillm.custom import friendly_error
+    from magicllm.custom import friendly_error
     assert "Lade-Skript" in friendly_error(RuntimeError("Dataset scripts are no longer supported, but found x.py"))
     assert "gesperrt" in friendly_error(Exception("Dataset 'a/b' is a gated dataset on the Hub. You must be authenticated"))
     assert "nicht gefunden" in friendly_error(Exception("Dataset 'a/b' doesn't exist on the Hub"))
 
 
 def test_catalog_entries_are_complete():
-    from minillm.catalog import CATALOG
+    from magicllm.catalog import CATALOG
     keys = [d.key for d in CATALOG]
     assert len(keys) == len(set(keys)), "doppelte Schlüssel im Katalog"
     assert any(d.category == "Code" for d in CATALOG) and len(CATALOG) >= 40
@@ -268,9 +268,9 @@ def test_saved_custom_datasets_load_in_both_import_orders(tmp_path):
     (tmp_path / "custom_datasets.json").write_text(json.dumps([{
         "key": "custom_x", "repo": "a/b", "config": None, "split": "train", "columns": ["text"],
         "headings": False, "min_chars": 1, "max_chars": None}]), encoding="utf-8")
-    env = {**os.environ, "MINILLM_DATA_DIR": str(tmp_path)}
-    for first in ("from minillm import custom", "import minillm.catalog"):
-        code = first + "\nfrom minillm.catalog import BY_KEY\nprint('custom_x' in BY_KEY)"
+    env = {**os.environ, "MAGICLLM_DATA_DIR": str(tmp_path)}
+    for first in ("from magicllm import custom", "import magicllm.catalog"):
+        code = first + "\nfrom magicllm.catalog import BY_KEY\nprint('custom_x' in BY_KEY)"
         out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env,
                              cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         assert out.stdout.strip() == "True", (first, out.stdout, out.stderr[-300:])
@@ -278,7 +278,7 @@ def test_saved_custom_datasets_load_in_both_import_orders(tmp_path):
 
 # ------------------------------------------- Datensätze mit wechselndem Schema (CastError)
 def test_render_value_message_blocks():
-    from minillm.catalog import render_value
+    from magicllm.catalog import render_value
     msg = {"role": "assistant", "content": [{"type": "text", "text": "Hallo!"},
                                             {"type": "tool_use", "name": "Bash", "input": {"cmd": "ls"}}]}
     out = render_value(msg)
@@ -288,19 +288,19 @@ def test_render_value_message_blocks():
 
 
 def test_detect_columns_finds_message_dict():
-    from minillm.custom import detect_columns
+    from magicllm.custom import detect_columns
     row = {"parentUuid": None, "cwd": "/x", "sessionId": "abc", "type": "user",
            "message": {"role": "user", "content": "hello"}}
     assert detect_columns(row) == ["message"]
 
 
 def _fake_info(key="t_schema"):
-    from minillm.catalog import DatasetInfo
+    from magicllm.catalog import DatasetInfo
     return DatasetInfo(key, "t", "a/b", "", "Eigene", "en", lambda r: r["text"], min_chars=1)
 
 
 def test_iter_texts_falls_back_to_raw_json_on_schema_error(monkeypatch):
-    from minillm import catalog
+    from magicllm import catalog
 
     def fake_rows(info, raw):
         if raw:
@@ -313,7 +313,7 @@ def test_iter_texts_falls_back_to_raw_json_on_schema_error(monkeypatch):
 
 
 def test_fetch_restarts_cleanly_when_schema_changes_midway(monkeypatch, tmp_path):
-    from minillm import catalog
+    from magicllm import catalog
     info = _fake_info()
     monkeypatch.setitem(catalog.BY_KEY, info.key, info)
     monkeypatch.setattr(catalog, "RAW_DIR", tmp_path)
@@ -333,7 +333,7 @@ def test_fetch_restarts_cleanly_when_schema_changes_midway(monkeypatch, tmp_path
 
 def test_other_errors_are_not_swallowed(monkeypatch):
     import pytest
-    from minillm import catalog
+    from magicllm import catalog
 
     def boom(info, raw):
         raise ConnectionError("Netzwerk weg")

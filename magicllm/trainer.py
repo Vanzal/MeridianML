@@ -21,7 +21,7 @@ from .generate import attention_maps, generate_text
 from .model import GPT, GPTConfig
 from .tokenizer import BPETokenizer
 
-RUNS_DIR = Path(__file__).resolve().parent.parent / "runs"
+RUNS_DIR = Path(os.environ.get("MAGICLLM_RUNS_DIR") or Path(__file__).resolve().parent.parent / "runs")
 PROBE_TEXT = "Once upon a time, there was a little girl named Lily. She loved to play."
 
 
@@ -60,6 +60,14 @@ def lr_at(step: int, cfg: TrainConfig) -> float:
     progress = (step - cfg.warmup_steps) / max(1, cfg.max_steps - cfg.warmup_steps)
     coeff = 0.5 * (1.0 + math.cos(math.pi * progress))
     return cfg.lr * (cfg.min_lr_ratio + coeff * (1.0 - cfg.min_lr_ratio))
+
+
+def _atomic_write_bytes(path: Path, write) -> None:
+    """Erst in eine Hilfsdatei schreiben, dann umbenennen. So liest die App (z. B. die Seite „Generieren“, während
+    noch trainiert wird) nie eine halb geschriebene Datei."""
+    tmp = path.with_name(path.name + ".tmp")
+    write(tmp)
+    os.replace(tmp, path)
 
 
 class Trainer:
@@ -151,8 +159,9 @@ class Trainer:
     def save_checkpoint(self, name: str = "model.pt") -> None:
         assert self.model is not None
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        torch.save({"model": {k: v.detach().cpu() for k, v in self.model.state_dict().items()}, "model_cfg": self.model_cfg.to_dict(),
-                    "train_cfg": self.cfg.to_dict(), "step": self.step}, self.run_dir / name)
+        state = {"model": {k: v.detach().cpu() for k, v in self.model.state_dict().items()},
+                 "model_cfg": self.model_cfg.to_dict(), "train_cfg": self.cfg.to_dict(), "step": self.step}
+        _atomic_write_bytes(self.run_dir / name, lambda p: torch.save(state, p))
 
     def _write_run_json(self) -> None:
         info = {
@@ -164,10 +173,12 @@ class Trainer:
             "train_cfg": self.cfg.to_dict(), "finished": time.strftime("%Y-%m-%d %H:%M:%S"),
             "device": self.device_info.get("name", "CPU"),
         }
-        (self.run_dir / "run.json").write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
+        text = json.dumps(info, ensure_ascii=False, indent=1)
+        _atomic_write_bytes(self.run_dir / "run.json", lambda p: p.write_text(text, encoding="utf-8"))
 
     # --------------------------------------------------------------------- Lauf
     def _run(self) -> None:
+        metrics_file = None
         try:
             self.status = "läuft"
             cfg = self.cfg
@@ -268,11 +279,13 @@ class Trainer:
             if not self.samples or self.samples[-1]["step"] != self.step:
                 self._on_sample()
             self.save_checkpoint("model.pt")
-            metrics_file.close()
             self._write_run_json()
         except Exception as e:  # pragma: no cover - Fehler sollen in der App sichtbar sein
             self.status = "fehler"
             self.error = f"{e}\n{traceback.format_exc()}"
+        finally:
+            if metrics_file is not None:
+                metrics_file.close()
 
     def _on_eval(self, batcher: Batcher, gen: torch.Generator, f, first: bool = False) -> None:
         losses = self._estimate_loss(batcher, gen)
@@ -301,11 +314,18 @@ class Trainer:
 
 # ---------------------------------------------------------------- Laden alter Läufe
 def list_runs() -> list[dict]:
+    """Alle gespeicherten Läufe, der neueste zuerst. Kaputte oder unvollständige Ordner werden übersprungen."""
     out = []
     if RUNS_DIR.exists():
-        for d in sorted(RUNS_DIR.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+        dirs = [d for d in RUNS_DIR.iterdir() if d.is_dir()]
+        for d in sorted(dirs, key=lambda p: p.stat().st_mtime, reverse=True):
             if (d / "run.json").exists() and (d / "model.pt").exists():
-                out.append(json.loads((d / "run.json").read_text(encoding="utf-8")))
+                try:
+                    info = json.loads((d / "run.json").read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if isinstance(info, dict) and info.get("name"):
+                    out.append(info)
     return out
 
 

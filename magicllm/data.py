@@ -55,6 +55,9 @@ def prepare(name: str, docs_by_ds: dict[str, list[str]], vocab_size: int, val_fr
     out.mkdir(parents=True, exist_ok=True)
 
     all_docs: list[tuple[str, str]] = [(k, d) for k, ds in docs_by_ds.items() for d in ds]
+    if len(all_docs) < 2:
+        raise ValueError("Zu wenige Dokumente geladen (mindestens 2 nötig) – mehr Dokumente wählen oder einen "
+                         "anderen Datensatz nehmen.")
     rng = random.Random(seed)
     rng.shuffle(all_docs)
     n_val = max(1, int(len(all_docs) * val_fraction)) if len(all_docs) > 20 else max(1, len(all_docs) // 5)
@@ -94,7 +97,10 @@ def prepare(name: str, docs_by_ds: dict[str, list[str]], vocab_size: int, val_fr
         "chars_per_token": chars / max(1, len(train_ids)),
         "top_tokens": [[tok.token_str(int(i)), int(counts[i])] for i in top],
         "doc_token_lengths": doc_tokens,
-        "first_merges": [[tok.token_str(256 + i), int(counts[256 + i])] for i in range(min(40, len(tok.merges)))],
+        # Häufigkeit des Paares im Moment des Verschmelzens (die Endzählung wäre bei Zwischen-Tokens oft 0,
+        # weil sie später in längeren Tokens aufgehen)
+        "first_merges": [[tok.token_str(256 + i), int(tok.merge_counts[i] if i < len(tok.merge_counts) else counts[256 + i])]
+                         for i in range(min(40, len(tok.merges)))],
         "token_counts": counts.tolist(),
         "seconds_tokenizer": round(t_tok, 1),
         "seconds_total": round(time.time() - t0, 1),

@@ -1,6 +1,7 @@
 """Seite 4: Training starten und live beobachten."""
 from __future__ import annotations
 
+import html
 import time
 
 import numpy as np
@@ -9,10 +10,10 @@ import plotly.graph_objects as go
 import streamlit as st
 import torch
 
-from minillm import device as dev
-from minillm.data import Batcher, prepared_path
-from minillm.model import GPT
-from minillm.trainer import RUNS_DIR, TrainConfig, Trainer, lr_at
+from magicllm import device as dev
+from magicllm.data import Batcher, prepared_path, safe_name
+from magicllm.model import GPT
+from magicllm.trainer import RUNS_DIR, TrainConfig, Trainer, lr_at
 from ui.common import PALETTE, fmt_int, fmt_time, hero, need_data, restore_state, save_state, store, style_fig
 from ui.page_model import DEFAULTS as MODEL_DEFAULTS
 from ui.page_model import model_config
@@ -20,7 +21,7 @@ from ui.page_model import model_config
 DEFAULTS = dict(t_name="lauf-1", t_steps=1500, t_batch="Auto", t_device="Auto (GPU wenn vorhanden)", t_amp=True, t_lr=3e-3, t_warm=50, t_eval=50, t_sample=250,
                 t_wd=0.1, t_clip=1.0, t_threads=0)
 LR_OPTIONS = [3e-4, 5e-4, 1e-3, 2e-3, 3e-3, 5e-3, 1e-2]
-VIEWS = ["📉 Kurven", "📝 Beispieltexte", "👁 Aufmerksamkeit", "🗺 Embeddings", "⚖️ Gewichte"]
+VIEWS = ["Kurven", "Beispieltexte", "Aufmerksamkeit", "Embeddings", "Gewichte"]
 
 
 def _train_config() -> TrainConfig:
@@ -62,7 +63,7 @@ def _benchmark(meta: dict) -> tuple[float, int, str]:
 
 
 def render() -> None:
-    hero("🏋️ Training", "Das Modell rät das nächste Token, sieht seinen Fehler und verbessert sich – tausendfach. Schau live zu.")
+    hero("Training", "Das Modell rät das nächste Token, sieht seinen Fehler und verbessert sich – tausendfach. Schau live zu.")
     meta = need_data()
     restore_state("model", MODEL_DEFAULTS)
     restore_state("train", DEFAULTS)
@@ -70,7 +71,7 @@ def render() -> None:
     trainer: Trainer | None = sto["trainer"]
     running = bool(trainer and trainer.is_running)
 
-    with st.expander("⚙️ Trainings-Einstellungen", expanded=not running and (trainer is None)):
+    with st.expander("Trainings-Einstellungen", icon=":material/tune:", expanded=not running and (trainer is None)):
         a, b, c = st.columns(3)
         a.text_input("Name des Laufs", key="t_name", disabled=running)
         b.slider("Trainingsschritte", 100, 200000, step=100, key="t_steps", disabled=running,
@@ -94,11 +95,11 @@ def render() -> None:
         d3.slider("CPU-Threads (0 = automatisch)", 0, 16, key="t_threads", disabled=running)
         info = dev.describe(dev.pick_device("cpu" if st.session_state["t_device"] == "CPU erzwingen" else "auto"))
         if info["type"] == "cpu":
-            st.warning(f"⚪ **CPU** – {info['hint']}")
+            st.warning(f"**CPU** – {info['hint']}", icon=":material/memory:")
         else:
             mem = f" · {info['memory_gb']:.0f} GB" if info["memory_gb"] else ""
-            st.success(f"🟢 **GPU: {info['name']}**{mem} · {str(info['amp']).replace('torch.', '')} · "
-                       "wird automatisch voll ausgelastet")
+            st.success(f"**GPU: {info['name']}**{mem} · {str(info['amp']).replace('torch.', '')} · "
+                       "wird automatisch voll ausgelastet", icon=":material/bolt:")
         save_state("train")
         save_state("model")
 
@@ -109,15 +110,15 @@ def render() -> None:
                    f"({fmt_int(meta['tokens_train'])} Tokens)")
 
         bc1, bc2, bc3 = st.columns([1, 1, 2])
-        if bc1.button("⏱ Dauer schätzen", disabled=running):
+        if bc1.button("Dauer schätzen", disabled=running, icon=":material/timer:"):
             with st.spinner("Messe Geschwindigkeit …"):
                 speed, bs, devname = _benchmark(meta)
             total_tok = st.session_state["t_steps"] * bs * cfg.block_size
             st.session_state["_eta_msg"] = (f"**{devname}** schafft mit Batch {bs} ca. **{speed:,.0f} Tokens/s** → "
                                             f"{st.session_state['t_steps']} Schritte dauern etwa **{fmt_time(total_tok / speed)}** "
                                             f"({total_tok / meta['tokens_train']:.1f} Durchläufe durch die Daten).")
-        if bc2.button("▶️ Training starten", type="primary", disabled=running):
-            name = st.session_state["t_name"].strip() or "lauf"
+        if bc2.button("Training starten", type="primary", disabled=running, icon=":material/play_arrow:"):
+            name = safe_name(st.session_state["t_name"].strip() or "lauf")
             if (RUNS_DIR / name).exists():
                 name = f"{name}-{time.strftime('%H%M%S')}"
             trainer = Trainer(name, prepared_path(meta["name"]), cfg, _train_config())
@@ -163,12 +164,11 @@ def _dashboard() -> None:
     step_t = (m["time"].iloc[-1] - m["time"].iloc[max(0, len(m) - 31)]) / max(1, min(30, len(m) - 1)) if len(m) > 1 else 0
     eta = step_t * (cfg.max_steps - trainer.step)
 
-    icon = {"läuft": "🟢", "fertig": "✅", "gestoppt": "⏹", "bereit": "⚪"}.get(trainer.status, "")
     r1 = st.columns(3)
-    r1[0].metric("Status", f"{icon} {trainer.status}", help=f"Lauf: {trainer.run_name}")
+    r1[0].metric("Status", trainer.status, help=f"Lauf: {trainer.run_name}")
     r1[1].metric("Schritt", f"{trainer.step} / {cfg.max_steps}")
     r1[2].metric("Tempo", f"{tok_s:,.0f} Tok/s", delta=f"noch {fmt_time(eta)}" if running else fmt_time(trainer.elapsed),
-                 delta_color="off")
+                 delta_color="off", delta_arrow="off")
     r2 = st.columns(3)
     r2[0].metric("Train-Loss", f"{recent_loss:.3f}" if len(m) else "–", help="Mittel der letzten 20 Schritte")
     r2[1].metric("Val-Loss", f"{val:.3f}" if len(ev) else "–",
@@ -188,18 +188,18 @@ def _dashboard() -> None:
         g[2].metric("Leistung", f"{gs['power_w']:.0f} / {gs['power_limit_w']:.0f} W")
         g[3].metric("Temperatur", f"{gs['temp_c']:.0f} °C")
         if running and trainer.step > 30 and gs["util"] < 70:
-            st.info("💡 Die GPU wird noch nicht voll genutzt – das Modell ist zu klein für diese Karte. Auf der Seite "
-                    "**🧠 Modell** gibt es den Knopf **„🚀 GPU-Maximum“**, und die Batch-Grösse sollte auf „Auto“ stehen.")
+            st.info("Die GPU wird noch nicht voll genutzt – das Modell ist zu klein für diese Karte. Auf der Seite "
+                    "**Modell** gibt es den Knopf **„GPU-Maximum“**, und die Batch-Grösse sollte auf „Auto“ stehen.",
+                    icon=":material/lightbulb:")
     st.progress(min(1.0, trainer.step / cfg.max_steps),
                 text=f"{trainer.tokens_seen:,} Tokens gesehen · {trainer.n_params:,} Parameter · "
                      f"Laufzeit {fmt_time(trainer.elapsed)}")
 
-    b1, b2 = st.columns([1, 5])
-    if running and b1.button("⏹ Stoppen", key="stop_btn"):
+    if running and st.button("Stoppen", key="stop_btn", icon=":material/stop:"):
         trainer.stop()
     if not running and trainer.status in ("fertig", "gestoppt"):
-        b2.success(f"Lauf **{trainer.run_name}** gespeichert (Ordner `runs/{trainer.run_name}`). "
-                   f"Beste Val-Loss: {trainer.best_val:.3f}. Probier ihn unter ✨ Generieren aus!")
+        st.success(f"Lauf **{trainer.run_name}** gespeichert (Ordner `runs/{trainer.run_name}`). "
+                   f"Beste Val-Loss: {trainer.best_val:.3f}. Probier ihn unter **Generieren** aus!", icon=":material/check_circle:")
 
     view = st.radio("Ansicht", VIEWS, horizontal=True, label_visibility="collapsed", key="train_view")
     if view == VIEWS[0]:
@@ -229,12 +229,12 @@ def _view_curves(trainer: Trainer, m: pd.DataFrame, ev: pd.DataFrame) -> None:
 
     fig = go.Figure()
     fig.add_scatter(x=mt["step"], y=mt["loss"], mode="lines", name="Loss pro Schritt",
-                    line=dict(color=PALETTE["violet"], width=1), opacity=0.25)
+                    line=dict(color=PALETTE["fg"], width=1), opacity=0.2)
     fig.add_scatter(x=mt["step"], y=mt["smooth"], mode="lines", name="Loss (geglättet)",
-                    line=dict(color=PALETTE["violet"], width=3))
+                    line=dict(color=PALETTE["fg"], width=2))
     if len(ev):
         fig.add_scatter(x=ev["step"], y=ev["val"], mode="lines+markers", name="Validierung",
-                        line=dict(color=PALETTE["orange"], width=3), marker=dict(size=7))
+                        line=dict(color=PALETTE["amber"], width=2), marker=dict(size=6))
     fig.update_layout(title="Loss – je tiefer, desto besser", xaxis_title="Schritt", yaxis_title="Cross-Entropy")
     # Rate-Linie: ln(Vokabular) = Verlust eines Modells, das nur zufällig rät
     fig.add_hline(y=float(np.log(trainer.model_cfg.vocab_size)), line_dash="dot", line_color=PALETTE["grey"],
@@ -274,9 +274,8 @@ def _view_samples(trainer: Trainer) -> None:
         return
     st.caption("So schreibt das Modell nach und nach besser. Jeder Text wurde ohne Vorgabe frei erzeugt.")
     for s in reversed(trainer.samples[-8:]):
-        st.markdown(f"**Schritt {s['step']}**")
-        text = s["text"].replace("<", "&lt;")
-        st.markdown(f'<div class="sample">{text}</div>', unsafe_allow_html=True)
+        st.markdown(f"<div class='ml-stats'>step <b>{s['step']}</b></div>", unsafe_allow_html=True)
+        st.markdown(f'<div class="sample">{html.escape(s["text"])}</div>', unsafe_allow_html=True)
 
 
 def _view_attention(trainer: Trainer) -> None:
@@ -292,7 +291,7 @@ def _view_attention(trainer: Trainer) -> None:
     c[2].caption(f"Stand: Schritt {snap['step']}")
     mat = maps[min(layer, n_layer - 1)][min(head, n_head - 1)].astype(np.float32)
     toks = [f"{i}:{t}" for i, t in enumerate(snap["tokens"])]
-    fig = go.Figure(go.Heatmap(z=mat, x=toks, y=toks, colorscale="Viridis", zmin=0, zmax=1,
+    fig = go.Figure(go.Heatmap(z=mat, x=toks, y=toks, colorscale="Greys_r", zmin=0, zmax=1,
                                colorbar=dict(title="Aufmerksamkeit")))
     fig.update_yaxes(autorange="reversed", title="schaut von (Token)")
     fig.update_xaxes(title="auf (Token)")
@@ -329,7 +328,7 @@ def _view_weights(trainer: Trainer) -> None:
     last = trainer.weight_stats[-1]
     df = pd.DataFrame(last["stats"])
     df["name"] = df["name"].str.replace("blocks.", "B", regex=False)
-    fig = go.Figure(go.Bar(x=df["name"], y=df["std"], marker_color=PALETTE["violet"]))
+    fig = go.Figure(go.Bar(x=df["name"], y=df["std"], marker_color=PALETTE["fg"]))
     fig.update_layout(title=f"Streuung (Std) der Gewichte je Matrix – Schritt {last['step']}", xaxis_tickangle=-45)
     st.plotly_chart(style_fig(fig, 340, legend=False), width="stretch", key="c_wstd")
 
@@ -344,12 +343,14 @@ def _view_weights(trainer: Trainer) -> None:
         xs, ys = zip(*series[n])
         fig.add_scatter(x=xs, y=ys, mode="lines+markers", name=n.replace("blocks.", "B"))
     fig.update_layout(title="Wie sich die Gewichts-Grössen (Norm) verändern", xaxis_title="Schritt")
-    st.plotly_chart(style_fig(fig, 340), width="stretch", key="c_wnorm")
+    fig = style_fig(fig, 380)
+    fig.update_layout(margin=dict(t=110))            # Platz für die zweizeilige Legende
+    st.plotly_chart(fig, width="stretch", key="c_wnorm")
 
     if trainer.model is not None:
         names = [n for n, p in trainer.model.named_parameters() if p.ndim >= 2]
         sel = st.selectbox("Verteilung der Gewichte einer Matrix", names, key="w_hist")
-        w = dict(trainer.model.named_parameters())[sel].detach().flatten().numpy().copy()
+        w = dict(trainer.model.named_parameters())[sel].detach().float().flatten().cpu().numpy().copy()
         fig = go.Figure(go.Histogram(x=w, nbinsx=80, marker_color=PALETTE["cyan"]))
         fig.update_layout(title=f"Histogramm: {sel}", xaxis_title="Gewichtswert", yaxis_title="Anzahl")
         st.plotly_chart(style_fig(fig, 280, legend=False), width="stretch", key="c_whist")
