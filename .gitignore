@@ -8,3 +8,5 @@ runs/
 *.part
 .claude/
 settings/
+build/
+dist/

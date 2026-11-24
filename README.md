@@ -104,6 +104,21 @@ Die App führt mit sechs Seiten durch den ganzen Weg von den Rohdaten bis zum fe
 </tr>
 </table>
 
+## Installation unter Windows (ohne Python-Kenntnisse)
+
+1. **`Meridian-Setup-<version>.exe`** von der Release-Seite dieses Repos herunterladen und starten.
+   Keine Admin-Rechte nötig. Windows zeigt bei neuen, nicht signierten Programmen eventuell
+   „Der Computer wurde durch Windows geschützt“ – dann auf **Weitere Informationen → Trotzdem ausführen**.
+2. **Meridian** im Startmenü (oder auf dem Desktop) öffnen. Beim **ersten Start** richtet sich Meridian selbst ein:
+   Python und PyTorch werden heruntergeladen (etwa 3 GB, 5–15 Minuten). Mit einer NVIDIA-Grafikkarte wird
+   automatisch die GPU-Version installiert (CUDA 13.0, sonst 12.8, sonst CPU).
+3. Danach öffnet sich die App im Browser. Das schwarze Konsolenfenster zeigt, was passiert – offen lassen;
+   schliessen beendet Meridian.
+
+Deine Daten (Modelle, Datensätze, Einstellungen) liegen in `%LOCALAPPDATA%\Meridian` und bleiben bei Updates
+erhalten. Startmenü-Eintrag **„Meridian neu einrichten“** baut die Python-Umgebung neu auf, falls etwas klemmt.
+Den Installer selbst bauen: `packaging/windows/build.sh` (Linux, braucht Go, NSIS und mingw-windres).
+
 ## Schnellstart
 
 Voraussetzung: **Python 3.10+**. Wenn eine **Grafikkarte (GPU)** da ist, wird sie automatisch benutzt und voll
@@ -482,6 +497,7 @@ meridian/
 ├── app.py                 # Streamlit-App (Einstieg)
 ├── train_cli.py           # Training ohne App
 ├── generate_cli.py        # Text erzeugen ohne App (wie llama-cli)
+├── packaging/windows/     # Windows-Installer: Startprogramm (Go), NSIS-Skript, build.sh
 ├── bench_cli.py           # Tempo messen und A/B-Tests (wie llama-bench)
 ├── meridianlm/              # der eigentliche Kern
 │   ├── catalog.py         #   Katalog der 41 Hugging-Face-Datensätze

@@ -49,6 +49,9 @@ python tools/make_logo.py assets                                # Logo-Dateien n
 ```
 
 Umgebungsvariablen: `MERIDIAN_DATA_DIR`, `MERIDIAN_RUNS_DIR`, `MERIDIAN_SETTINGS_DIR`, `HF_TOKEN`.
+Installer bauen: `packaging/windows/build.sh` → `dist/Meridian-Setup-<version>.exe`. Der Launcher setzt die drei
+`MERIDIAN_*`-Ordner auf `%LOCALAPPDATA%\Meridian\{data,runs,settings}`; die App darf nie in den Programmordner schreiben.
+Version steht nur in `meridianlm/__init__.py` (Launcher: `version` in `main.go`, `meridian.rc` – beim Erhöhen mitziehen).
 
 ## Aufbau
 
@@ -70,6 +73,7 @@ Umgebungsvariablen: `MERIDIAN_DATA_DIR`, `MERIDIAN_RUNS_DIR`, `MERIDIAN_SETTINGS
 | `docs/logo/concepts/` | 8 Logo-Konzepte + Vorschau; gewählt wurde „Token M prompt“ (`M_`) |
 | `assets/` | finales Logo (Marke, Logo hell/dunkel, App-Icon); Wortmarke als Pfade (Inter Display SemiBold, OFL) |
 | `tests/test_core.py`, `tests/test_meridian.py` | Tests |
+| `packaging/windows/` | Windows-Installer: `launcher/` (Go, `Meridian.exe`: richtet beim ersten Start mit uv Python 3.12 + PyTorch ein, CUDA 13.0 → 12.8 → CPU, startet Streamlit, öffnet Browser), `meridian.nsi` (NSIS, ohne Admin, nach `%LOCALAPPDATA%\Programs\Meridian`), `build.sh` |
 
 Gut zu wissen:
 - Die App liest das Theme bei jedem Lauf aus `settings/theme.json`; `apply_to_streamlit` ändert Streamlits
@@ -90,9 +94,11 @@ Gut zu wissen:
 - Heller Modus, eigene Themes (Editor, Vorschau, Kontrast-Check, Import/Export).
 - Hugging-Face-Token mit Leserechten (Einstellungen → Hugging Face).
 
+- Windows-Installer + Startprogramm (gebaut und auf Linux getestet; auf echtem Windows noch **nicht** getestet).
+
 ## Als Nächstes (mit Vanzal abgesprochen, Reihenfolge vorgeschlagen)
 
-1. **Auf der RTX 5080 prüfen** – echte HF-Downloads, Token-Prüfung, Training mit „GPU-Maximum“,
+1. **Auf der RTX 5080 prüfen** – Installer auf Windows durchspielen (Erst-Einrichtung, GPU-Erkennung), echte HF-Downloads, Token-Prüfung, Training mit „GPU-Maximum“,
    `bench_cli.py` auf CUDA. Ergebnisse in `docs/perf/PLAN.md` nachtragen (eigene Maschine, eigener Abschnitt).
 2. **GPU-Tempo-Hebel** aus `docs/perf/PLAN.md` → „Nächste Hebel“: CUDA Graphs / `torch.compile(mode="reduce-overhead")`
    für den Decode-Schritt, Würfeln auf der GPU, Batch. Jeweils mit A/B und Gleichheits-Check.
