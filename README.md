@@ -1,3 +1,10 @@
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/magic-llm-logo-dark.svg">
+    <img src="assets/magic-llm-logo.svg" alt="Magic LLM" height="48">
+  </picture>
+</p>
+
 # Magic LLM
 
 **Ein eigenes Sprachmodell (GPT) – von Grund auf gebaut, mit Hugging-Face-Daten trainiert und in einer App live sichtbar gemacht.**

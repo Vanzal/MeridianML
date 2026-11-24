@@ -10,6 +10,10 @@ from magicllm import hf_auth
 from ui import theme as th
 from ui.common import hero
 
+MARK = ('<rect x="2" y="4" width="3.4" height="25" rx="0.6"/><rect x="6.6" y="11" width="3.4" height="18" rx="0.6"/>'
+        '<rect x="11.2" y="18" width="3.4" height="11" rx="0.6"/><rect x="15.8" y="11" width="3.4" height="18" rx="0.6"/>'
+        '<rect x="20.4" y="4" width="3.4" height="25" rx="0.6"/><rect x="25.5" y="24.5" width="4.5" height="4.5" rx="0.5"/>')
+
 FIELDS = [("bg", "Hintergrund"), ("surface", "Flächen"), ("border", "Rahmen"), ("sidebar", "Seitenleiste"),
           ("fg", "Text"), ("muted", "Text gedämpft"), ("primary", "Akzent (Hauptknöpfe)")]
 
@@ -30,8 +34,7 @@ def _preview(t: th.Theme) -> str:
      ui-sans-serif,system-ui,sans-serif;display:flex;min-height:230px">
   <div style="width:150px;background:{t.sidebar};border-right:1px solid {t.border};padding:14px">
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
-      <div style="width:20px;height:20px;border-radius:5px;background:{t.primary};color:{k['on_primary']};
-           font:700 9px ui-monospace,monospace;display:grid;place-items:center">ML</div>
+      <svg viewBox="0 0 32 32" width="20" height="20" fill="{t.fg}">{MARK}</svg>
       <b style="color:{t.fg};font-size:13px">Magic LLM</b></div>
     <div style="background:{k['surface2']};color:{t.fg};border-radius:6px;padding:4px 8px;font-size:12px">Start</div>
     <div style="color:{t.muted};padding:4px 8px;font-size:12px">Training</div>

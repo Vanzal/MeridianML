@@ -28,29 +28,24 @@ if st.session_state.get("_theme_sig") != _sig:
 
 
 def _logo_files(t: theme.Theme) -> tuple[str, str]:
-    """Logo in den Farben des Themes (das mitgelieferte SVG ist weiss und wäre auf Hell unsichtbar)."""
+    """Logo und Tab-Icon in den Farben des Themes (Vorlagen: assets/magic-llm-logo.svg und magic-llm-icon.svg)."""
     k = theme.tokens(t)
-    mark = (f'<rect x="{{x}}" y="2" width="28" height="28" rx="7" fill="{t.primary}"/>'
-            f'<text x="{{cx}}" y="21" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, '
-            f'monospace" font-size="12" font-weight="700" fill="{k["on_primary"]}" letter-spacing="-0.5">ML</text>')
-    logo = ('<svg xmlns="http://www.w3.org/2000/svg" width="168" height="32" viewBox="0 0 168 32">'
-            + mark.format(x=0, cx=14) +
-            f'<text x="38" y="22" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Helvetica, '
-            f'Arial, sans-serif" font-size="17" font-weight="600" fill="{t.fg}" letter-spacing="-0.3">Magic LLM</text>'
-            '</svg>')
-    icon = ('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">'
-            + mark.format(x=2, cx=16) + '</svg>')
+    logo = (ASSETS / "magic-llm-logo.svg").read_text(encoding="utf-8").replace('fill="#0A0A0A"', f'fill="{t.fg}"')
+    icon = ((ASSETS / "magic-llm-icon.svg").read_text(encoding="utf-8")
+            .replace('fill="#0A0A0A"', 'fill="__TILE__"').replace('fill="#FAFAFA"', f'fill="{k["on_primary"]}"')
+            .replace("__TILE__", t.primary))
     out = theme.SETTINGS_DIR / "logo"
     try:
         out.mkdir(parents=True, exist_ok=True)
-        tag = f"{t.primary}{k['on_primary']}{t.fg}".replace("#", "")
+        tag = f"v2{t.fg}{t.primary}{k['on_primary']}".replace("#", "")
         lp, ip = out / f"logo-{tag}.svg", out / f"icon-{tag}.svg"
-        if not lp.exists():
+        if not lp.exists() or not ip.exists():
             lp.write_text(logo, encoding="utf-8")
             ip.write_text(icon, encoding="utf-8")
         return str(lp), str(ip)
-    except OSError:                       # schreibgeschützt: mitgeliefertes Logo nehmen
-        return str(ASSETS / "logo.svg"), str(ASSETS / "icon.svg")
+    except OSError:                       # schreibgeschützt: mitgelieferte Dateien nehmen
+        dark = t.base == "dark"
+        return str(ASSETS / ("magic-llm-logo-dark.svg" if dark else "magic-llm-logo.svg")), str(ASSETS / "magic-llm-icon.svg")
 
 
 _logo, _icon = _logo_files(_theme)
