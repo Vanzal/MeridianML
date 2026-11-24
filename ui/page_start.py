@@ -6,7 +6,7 @@ import streamlit as st
 from magicllm.catalog import CATALOG
 from magicllm.data import list_prepared
 from magicllm.trainer import list_runs
-from ui.common import hero, next_step
+from ui.common import hero, next_step, themed_dot
 
 PIPELINE_DOT = """
 digraph G {
@@ -71,7 +71,7 @@ def render() -> None:
         '</div>', unsafe_allow_html=True)
 
     st.subheader("So fliesst ein Text durch das System")
-    st.graphviz_chart(PIPELINE_DOT, width="stretch")
+    st.graphviz_chart(themed_dot(PIPELINE_DOT), width="stretch")
 
     st.subheader("Die Schritte in der App")
     cols = st.columns(len(STEPS))

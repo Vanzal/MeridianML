@@ -14,6 +14,10 @@ from typing import Callable, Iterator
 
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
+from . import hf_auth
+
+hf_auth.apply()          # gespeicherten Hugging-Face-Token (falls vorhanden) für datasets/huggingface_hub setzen
+
 DATA_DIR = Path(os.environ.get("MAGICLLM_DATA_DIR") or os.environ.get("MINILLM_DATA_DIR") or Path(__file__).resolve().parent.parent / "data")
 RAW_DIR = DATA_DIR / "raw"
 

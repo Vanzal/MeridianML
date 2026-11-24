@@ -32,6 +32,30 @@ class GPTConfig:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
+class KVCache:
+    """Speicher für Keys und Values aller Schichten, damit beim Erzeugen jedes Token nur einmal gerechnet wird.
+
+    Ohne Cache rechnet das Modell für jedes neue Token den ganzen bisherigen Text noch einmal durch (Aufwand wächst
+    quadratisch). Mit Cache wird nur das neue Token gerechnet; Keys/Values der alten Tokens werden wiederverwendet.
+    Das ändert am Ergebnis nichts (verlustfrei), es spart nur Rechenzeit.
+    """
+
+    def __init__(self, cfg: GPTConfig, batch: int, device, dtype=torch.float32):
+        hd = cfg.n_embd // cfg.n_head
+        shape = (cfg.n_layer, batch, cfg.n_head, cfg.block_size, hd)
+        self.k = torch.zeros(shape, device=device, dtype=dtype)
+        self.v = torch.zeros(shape, device=device, dtype=dtype)
+        self.length = 0                         # so viele Positionen sind schon gefüllt
+        self.capacity = cfg.block_size
+
+    def reset(self) -> None:
+        self.length = 0
+
+    @property
+    def nbytes(self) -> int:
+        return self.k.numel() * self.k.element_size() * 2
+
+
 class CausalSelfAttention(nn.Module):
     def __init__(self, cfg: GPTConfig):
         super().__init__()
@@ -44,10 +68,25 @@ class CausalSelfAttention(nn.Module):
         mask = torch.tril(torch.ones(cfg.block_size, cfg.block_size)).view(1, 1, cfg.block_size, cfg.block_size)
         self.register_buffer("mask", mask, persistent=False)
 
-    def forward(self, x: torch.Tensor, return_attn: bool = False):
+    def forward(self, x: torch.Tensor, return_attn: bool = False, cache: KVCache | None = None, layer: int = 0):
         B, T, C = x.shape
         q, k, v = self.qkv(x).split(C, dim=2)
         q, k, v = (t.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) for t in (q, k, v))
+        if cache is not None:                   # neue Keys/Values ablegen, dann auf alle bisherigen schauen
+            start = cache.length
+            cache.k[layer, :B, :, start:start + T] = k
+            cache.v[layer, :B, :, start:start + T] = v
+            if start == 0:                      # Prefill: mit den frischen (zusammenhängenden) Tensoren rechnen –
+                y = F.scaled_dot_product_attention(q, k, v, is_causal=True)   # schneller als über den Cache
+            elif T == 1:                        # ein Token darf alles Vorherige sehen: keine Maske nötig
+                k, v = cache.k[layer, :B, :, :start + 1], cache.v[layer, :B, :, :start + 1]
+                y = F.scaled_dot_product_attention(q, k, v)
+            else:                               # mehrere neue Tokens hinter schon gecachten
+                k, v = cache.k[layer, :B, :, :start + T], cache.v[layer, :B, :, :start + T]
+                mask = torch.ones(T, start + T, dtype=torch.bool, device=x.device).tril(diagonal=start)
+                y = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)
+            y = y.transpose(1, 2).contiguous().view(B, T, C)
+            return self.proj(y), None
         if return_attn:   # langsame Variante, die die Aufmerksamkeits-Matrix verrät (für die Visualisierung)
             att = (q @ k.transpose(-2, -1)) / math.sqrt(k.size(-1))
             att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
@@ -80,8 +119,8 @@ class Block(nn.Module):
         self.ln2 = nn.LayerNorm(cfg.n_embd)
         self.mlp = MLP(cfg)
 
-    def forward(self, x, return_attn: bool = False):
-        a, att = self.attn(self.ln1(x), return_attn)
+    def forward(self, x, return_attn: bool = False, cache: KVCache | None = None, layer: int = 0):
+        a, att = self.attn(self.ln1(x), return_attn, cache, layer)
         x = x + a
         x = x + self.mlp(self.ln2(x))
         return x, att
@@ -112,15 +151,21 @@ class GPT(nn.Module):
         elif isinstance(m, nn.Embedding):
             nn.init.normal_(m.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx: torch.Tensor, targets: torch.Tensor | None = None, return_attn: bool = False):
+    def forward(self, idx: torch.Tensor, targets: torch.Tensor | None = None, return_attn: bool = False,
+                cache: KVCache | None = None):
+        """``cache``: optionaler KVCache. Dann sind ``idx`` die *neuen* Tokens ab Position ``cache.length``;
+        danach ist ``cache.length`` um ``T`` gewachsen."""
         B, T = idx.shape
-        assert T <= self.cfg.block_size, f"Sequenz ({T}) länger als Kontext ({self.cfg.block_size})"
-        pos = torch.arange(T, device=idx.device)
+        start = cache.length if cache is not None else 0
+        assert start + T <= self.cfg.block_size, f"Sequenz ({start + T}) länger als Kontext ({self.cfg.block_size})"
+        pos = torch.arange(start, start + T, device=idx.device)
         x = self.drop(self.tok_emb(idx) + self.pos_emb(pos))
         atts = []
-        for block in self.blocks:
-            x, att = block(x, return_attn)
+        for i, block in enumerate(self.blocks):
+            x, att = block(x, return_attn and cache is None, cache, i)
             atts.append(att)
+        if cache is not None:
+            cache.length += T
         logits = self.lm_head(self.ln_f(x))
         loss = None
         if targets is not None:
@@ -128,6 +173,10 @@ class GPT(nn.Module):
         if return_attn:
             return logits, loss, atts
         return logits, loss
+
+    def new_cache(self, batch: int = 1) -> KVCache:
+        p = next(self.parameters())
+        return KVCache(self.cfg, batch, p.device, p.dtype)
 
     # ------------------------------------------------------------- Hilfsfunktionen
     def num_params(self) -> int:

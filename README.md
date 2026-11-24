@@ -44,6 +44,28 @@ Verwendet wird nur **PyTorch** (für Tensoren und automatische Ableitung), **`da
 | **Daten** | Leere Datensätze werden sauber gemeldet; Warnung, wenn ein vorbereiteter Datensatz überschrieben wird |
 | **Tests** | Neue Tests für Sampling, UTF-8-Streaming, atomare Checkpoints, CLI, Emoji-Freiheit der Oberfläche; GitHub-Actions-Workflow |
 
+## Neu: Tempo, Themes und Hugging-Face-Token
+
+| Bereich | Was |
+|---|---|
+| **Tempo-Seite + `bench_cli.py`** | Misst Decode, Prefill und Zeit bis zum ersten Token (Median aus ≥ 6), rechnet die physikalische Obergrenze aus (Bandbreite ÷ Bytes pro Token) und macht A/B-Tests nach der Methode des [inference-optimisation-Skills](https://github.com/sybil-solutions/inference-optimisation-skill): Kontrolle – Kandidat – Kontrolle, angenommen nur bei klarem Gewinn ohne Verschlechterung. Jede Messung landet in einem Ledger |
+| **KV-Cache** | Beim Erzeugen wird pro Token nur noch das neue Token gerechnet: **≈ 3× schneller** (≈ 430 → 1'317 tok/s auf der Test-Maschine), Ausgabe nachweislich identisch. Protokoll aller Experimente: [`docs/perf/PLAN.md`](docs/perf/PLAN.md) |
+| **Heller Modus** | Schalter in der Seitenleiste |
+| **Eigene Themes** | Unter **Einstellungen → Design**: Vorlagen Dunkel, Hell, Terminal; jede Farbe per Farbwähler änderbar, Live-Vorschau, Kontrast-Prüfung, als eigenes Theme speichern, exportieren und importieren (.json) |
+| **Hugging-Face-Token** | Unter **Einstellungen → Hugging Face**: Token mit Leserechten eintragen (für gesperrte Datensätze). Wird geprüft (wem gehört er, nur lesen?), nur lokal gespeichert (`settings/hf_token`, Rechte 600, nicht in Git) und nie vollständig angezeigt |
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/12-tempo.png" alt="Tempo"><br><sub><b>Tempo messen, mit Obergrenze</b></sub></td>
+<td width="50%"><img src="docs/screenshots/13-einstellungen-hell.png" alt="Theme-Editor"><br><sub><b>Theme-Editor im hellen Modus</b></sub></td>
+</tr>
+</table>
+
+```bash
+python bench_cli.py -m demo                                   # messen, Tabelle wie llama-bench + Obergrenzen
+python bench_cli.py -m demo --ab use_cache=false use_cache=true   # A/B-Test mit Urteil
+```
+
 ## Was kann die App?
 
 Die App führt mit sechs Seiten durch den ganzen Weg von den Rohdaten bis zum fertigen Modell:
@@ -117,7 +139,8 @@ andere Programme einbinden.
 3. Spalten wählen, **Vorschau** ansehen, **„Zum Katalog hinzufügen“**. Der Datensatz bleibt gespeichert und verhält sich
    wie alle anderen: auswählen, Dokumentenzahl einstellen, mischen, trainieren.
 
-Gesperrte Datensätze (Spalte „Gesperrt“) brauchen eine Anmeldung (`huggingface-cli login` oder die Umgebungsvariable `HF_TOKEN`).
+Gesperrte Datensätze (Spalte „Gesperrt“) brauchen einen Hugging-Face-Token mit Leserechten: in der App unter
+**Einstellungen → Hugging Face** eintragen (oder die Umgebungsvariable `HF_TOKEN` setzen).
 Alte Datensätze mit Lade-Skript funktionieren nicht mehr, dann meldet die App das verständlich.
 Haben die Zeilen einer JSON-Datei **unterschiedliche Strukturen** (z. B. Protokolle von Chat- oder Agenten-Sitzungen),
 scheitert die `datasets`-Bibliothek mit einem `CastError`. Die App erkennt das und liest die Dateien dann direkt als JSON.
@@ -452,6 +475,7 @@ magic-llm/
 ├── app.py                 # Streamlit-App (Einstieg)
 ├── train_cli.py           # Training ohne App
 ├── generate_cli.py        # Text erzeugen ohne App (wie llama-cli)
+├── bench_cli.py           # Tempo messen und A/B-Tests (wie llama-bench)
 ├── magicllm/              # der eigentliche Kern
 │   ├── catalog.py         #   Katalog der 41 Hugging-Face-Datensätze
 │   ├── data.py            #   Daten laden, Tokenizer trainieren, Batches
@@ -459,8 +483,11 @@ magic-llm/
 │   ├── model.py           #   GPT-Transformer (selbst gebaut)
 │   ├── device.py          #   GPU/CPU-Wahl, Mixed Precision, Auto-Batch
 │   ├── trainer.py         #   Trainings-Schleife mit Live-Metriken
-│   └── generate.py        #   Sampling (Temperatur, Top-k, Top-p, Min-p, Wiederholungs-Strafe)
-├── ui/                    # Seiten der App (common.py = Design-System)
+│   ├── generate.py        #   Sampling (Temperatur, Top-k, Top-p, Min-p, Wiederholungs-Strafe), KV-Cache
+│   ├── bench.py           #   Tempo-Messung, Obergrenzen, A/B-Tests, Ledger
+│   └── hf_auth.py         #   Hugging-Face-Token speichern und prüfen
+├── ui/                    # Seiten der App (common.py = Design-System, theme.py = Themes)
+├── docs/perf/             # Tempo-Experimente: PLAN.md, THEORY.md, ledger.jsonl
 ├── .streamlit/            # Theme
 ├── tests/                 # automatische Tests
 ├── tools/                 # Skript für die Screenshots

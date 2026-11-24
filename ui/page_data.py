@@ -9,7 +9,7 @@ import streamlit as st
 from magicllm import custom
 from magicllm.catalog import BY_KEY, CATALOG, iter_texts
 from magicllm.data import list_prepared, load_selection, prepare, safe_name
-from ui.common import fmt_int, hero, next_step, style_fig
+from ui.common import T, fmt_int, hero, next_step, style_fig
 
 DIFF_CLASS = {"sehr leicht": "good", "leicht": "good", "mittel": "", "schwer": "warn", "sehr schwer": "warn", "unbekannt": ""}
 LANG_LABEL = {"en": "Englisch", "de": "Deutsch", "multi": "Mehrsprachig"}
@@ -242,7 +242,7 @@ def render() -> None:
             st.info("Hake links mindestens einen Datensatz an.")
         else:
             fig = px.pie(names=[BY_KEY[k].title for k in selection], values=list(selection.values()), hole=0.55)
-            fig.update_traces(textinfo="percent", marker=dict(line=dict(color="#0A0A0A", width=2)))
+            fig.update_traces(textinfo="percent", marker=dict(line=dict(color=T["bg"], width=2)))
             st.plotly_chart(style_fig(fig, 260, legend=True), width="stretch")
             st.caption(f"**{sum(selection.values()):,}** Dokumente aus **{len(selection)}** Datensätzen")
 

@@ -220,3 +220,213 @@ def test_merge_counts_are_recorded_at_merge_time():
     tok = BPETokenizer.train(["aa ab aa ab aa"], 260)
     assert len(tok.merge_counts) == len(tok.merges) and all(c >= 2 for c in tok.merge_counts)
     assert tok.merge_counts == sorted(tok.merge_counts, reverse=True)
+
+
+# ------------------------------------------------------------------------- KV-Cache & Tempo
+def test_kv_cache_gives_same_logits_as_full_forward():
+    torch.manual_seed(0)
+    cfg = GPTConfig(vocab_size=300, block_size=24, n_layer=2, n_head=2, n_embd=32)
+    m = GPT(cfg).eval()
+    x = torch.randint(0, 300, (2, 20))
+    with torch.no_grad():
+        full, _ = m(x)
+        cache = m.new_cache(batch=2)
+        a, _ = m(x[:, :7], cache=cache)                  # Prefill
+        b, _ = m(x[:, 7:10], cache=cache)                # mehrere neue Tokens hinter dem Cache (Maske)
+        steps = [m(x[:, i:i + 1], cache=cache)[0] for i in range(10, 20)]   # einzeln
+    inc = torch.cat([a, b, *steps], dim=1)
+    assert cache.length == 20
+    assert torch.allclose(full, inc, atol=1e-5)
+
+
+def test_kv_cache_refuses_to_overflow_context():
+    m = GPT(GPTConfig(vocab_size=300, block_size=8, n_layer=1, n_head=2, n_embd=16)).eval()
+    cache = m.new_cache()
+    with torch.no_grad():
+        m(torch.zeros(1, 8, dtype=torch.long), cache=cache)
+        with pytest.raises(AssertionError):
+            m(torch.zeros(1, 1, dtype=torch.long), cache=cache)
+
+
+def test_greedy_output_identical_with_and_without_cache_past_window():
+    from magicllm.bench import greedy_equal
+    tok = BPETokenizer.train(GERMAN, 300)
+    torch.manual_seed(1)
+    m = GPT(GPTConfig(vocab_size=tok.vocab_size, block_size=16, n_layer=2, n_head=2, n_embd=32))
+    assert greedy_equal(m, tok, ["Grüezi", "", "Die Bäume"], n_tokens=40)    # 40 > Kontext 16: Fenster wandert
+
+
+def test_sampled_output_identical_with_and_without_cache():
+    tok = BPETokenizer.train(GERMAN, 300)
+    m = _tiny(tok)
+    kw = dict(temperature=0.9, top_k=20, top_p=0.95, min_p=0.02, repeat_penalty=1.1, seed=5)
+    a = [t for t, *_ in stream_generate(m, tok, "Grü", 50, use_cache=True, **kw)]
+    b = [t for t, *_ in stream_generate(m, tok, "Grü", 50, use_cache=False, **kw)]
+    assert a == b
+
+
+def test_bench_run_ceilings_and_ab(tmp_path):
+    from magicllm import bench
+    tok = BPETokenizer.train(GERMAN, 300)
+    m = _tiny(tok)
+    machine = {"bandwidth_gbs": 10.0, "gflops": 100.0}
+    r = bench.run(m, tok, bench.BenchConfig(), n_tokens=12, prompt_len=4, prefill_lengths=(8, 64), machine=machine)
+    assert r.ok and set(r.metrics) == {"decode_tok_s", "ttft_ms", "prefill8_tok_s", "prefill32_tok_s"}
+    assert all(len(v) >= bench.MIN_SAMPLES for v in r.samples.values())
+    c = bench.ceilings(m, 10.0, 100.0, ctx=16)
+    assert c["bytes_per_token"] == m.num_params() * 4 + 2 * 1 * 16 * 32 * 4
+    assert abs(c["decode_tok_s"] - 10e9 / c["bytes_per_token"]) < 1e-6
+    ledger = tmp_path / "l.jsonl"
+    bench.append_ledger(ledger, "x", r)
+    assert bench.read_ledger(ledger)[0]["metrics"] == r.metrics
+    verdict, results = bench.ab_test(m, tok, bench.BenchConfig(use_cache=False), bench.BenchConfig(),
+                                     n_tokens=12, prompt_len=4, prefill_lengths=(8,))
+    assert len(results) == 3 and verdict.target == "decode_tok_s" and isinstance(verdict.accepted, bool)
+
+
+def test_bench_flags_degenerate_output():
+    from magicllm.bench import degenerate
+    assert degenerate([5] * 20) and degenerate([]) and not degenerate([1, 2, 3] * 5)
+
+
+def test_bench_cli_runs(trained_run, capsys):
+    import bench_cli
+    trainer_mod, runs = trained_run
+    assert bench_cli.main(["-m", "demo", "-n", "8", "-p", "4", "--prefill", "8", "--device", "cpu"]) == 0
+    out = capsys.readouterr().out
+    assert "decode_tok_s" in out and "Obergrenzen" in out
+    assert bench_cli.main(["-m", "demo", "-n", "8", "-p", "4", "--prefill", "8", "--device", "cpu",
+                           "--ab", "use_cache=false", "use_cache=true"]) == 0
+    assert "Urteil" in capsys.readouterr().out
+    assert len((runs / "demo" / "bench.jsonl").read_text().splitlines()) == 4
+
+
+# ------------------------------------------------------------------------- Themes
+@pytest.fixture
+def settings(tmp_path, monkeypatch):
+    from ui import theme as th
+    monkeypatch.setattr(th, "SETTINGS_DIR", tmp_path)
+    monkeypatch.setattr(th, "THEME_FILE", tmp_path / "theme.json")
+    monkeypatch.setenv("MAGICLLM_SETTINGS_DIR", str(tmp_path))
+    return th
+
+
+def test_presets_are_valid_and_readable(settings):
+    th = settings
+    assert {"Dunkel", "Hell", "Terminal"} <= set(th.PRESETS)
+    for t in th.PRESETS.values():
+        t.validate()
+        k = th.tokens(t)
+        assert th.contrast(t.fg, t.bg) >= 7, t.name                     # Text gut lesbar
+        assert th.contrast(k["on_primary"], t.primary) >= 4.5, t.name   # Text auf Hauptknöpfen lesbar
+        assert th.contrast(t.muted, t.bg) >= 3, t.name
+
+
+def test_light_preset_is_light(settings):
+    th = settings
+    assert th.PRESETS["Hell"].base == "light" and th.luminance(th.PRESETS["Hell"].bg) > 0.9
+    assert th.tokens(th.PRESETS["Hell"])["on_primary"] == "#FFFFFF"     # dunkler Knopf -> weisse Schrift
+    assert th.tokens(th.PRESETS["Dunkel"])["on_primary"] == "#0A0A0A"
+
+
+def test_custom_theme_roundtrip_and_delete(settings):
+    th = settings
+    assert th.active_theme().name == "Dunkel"
+    t = th.Theme.from_dict({**th.PRESETS["Hell"].to_dict(), "name": "Mein Blau", "primary": "#2563EB"})
+    assert th.save_custom(t) == "Mein Blau"
+    assert th.active_theme().primary == "#2563EB" and "Mein Blau" in th.all_themes()
+    th.set_active("Terminal")
+    assert th.active_theme().name == "Terminal"
+    th.delete_custom("Mein Blau")
+    assert "Mein Blau" not in th.all_themes()
+    th.set_active("gibts nicht")
+    assert th.active_theme().name == "Dunkel"
+
+
+def test_saving_under_preset_name_does_not_overwrite_preset(settings):
+    th = settings
+    t = th.Theme.from_dict({**th.PRESETS["Dunkel"].to_dict(), "primary": "#FF0000"})
+    assert th.save_custom(t) == "Dunkel (eigenes)"
+    assert th.PRESETS["Dunkel"].primary == "#FAFAFA"
+
+
+def test_invalid_theme_rejected(settings):
+    th = settings
+    with pytest.raises(ValueError):
+        th.Theme.from_dict({"name": "x", "bg": "rot"})
+    with pytest.raises(ValueError):
+        th.Theme.from_dict({"name": "x", "base": "pink"})
+    (settings.THEME_FILE).write_text("{kaputt", encoding="utf-8")
+    assert th.active_theme().name == "Dunkel"                        # kaputte Datei -> Standard
+
+
+def test_streamlit_options_cover_light_mode(settings):
+    o = settings.streamlit_options(settings.PRESETS["Hell"])
+    assert o["theme.base"] == "light" and o["theme.backgroundColor"] == "#FFFFFF"
+    assert o["theme.chartCategoricalColors"] == settings.PRESETS["Hell"].chart
+
+
+def test_themed_dot_recolors_in_one_pass(settings):
+    from ui import common
+    common.apply_theme(settings.PRESETS["Hell"])
+    out = common.themed_dot('fillcolor="#141414", color="#333333", fontcolor="#E5E5E5" c="#60A5FA" x="#123456"')
+    assert "#141414" not in out and common.T["surface"] in out and common.T["fg"] in out
+    assert settings.PRESETS["Hell"].chart[1] in out and "#123456" in out
+    common.apply_theme(settings.PRESETS["Dunkel"])
+
+
+# ------------------------------------------------------------------------- Hugging-Face-Token
+@pytest.fixture
+def hf(tmp_path, monkeypatch):
+    from magicllm import hf_auth
+    monkeypatch.setenv("MAGICLLM_SETTINGS_DIR", str(tmp_path))
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv(hf_auth._ENV_FROM_FILE, raising=False)
+    return hf_auth
+
+
+FAKE = "hf_" + "A1b2C3d4" * 4 + "xy"
+
+
+def test_hf_token_save_apply_remove(hf, tmp_path):
+    import os
+    import stat
+    assert hf.source() == "" and hf.active_token() is None
+    hf.save(FAKE)
+    f = tmp_path / "hf_token"
+    assert f.read_text() == FAKE
+    if os.name == "posix":
+        assert stat.S_IMODE(f.stat().st_mode) == 0o600              # nur für den Besitzer lesbar
+    assert os.environ["HF_TOKEN"] == FAKE and hf.source() == "datei"
+    hf.remove()
+    assert not f.exists() and "HF_TOKEN" not in os.environ and hf.source() == ""
+
+
+def test_hf_env_token_has_priority(hf, monkeypatch):
+    import os
+    monkeypatch.setenv("HF_TOKEN", "hf_" + "Z" * 34)
+    hf.save(FAKE)
+    assert os.environ["HF_TOKEN"] == "hf_" + "Z" * 34 and hf.source() == "umgebung"
+
+
+def test_hf_token_validation_and_mask(hf):
+    assert hf.looks_valid(FAKE) and not hf.looks_valid("abc") and not hf.looks_valid("hf_kurz")
+    with pytest.raises(ValueError):
+        hf.save("kein-token")
+    assert hf.mask(FAKE) == "hf_…" + FAKE[-4:] and FAKE not in hf.mask(FAKE) and hf.mask(None) == "–"
+
+
+def test_hf_verify_reports_role(hf, monkeypatch):
+    import huggingface_hub
+    monkeypatch.setattr(huggingface_hub.HfApi, "whoami",
+                        lambda self, token=None: {"name": "vanzal", "auth": {"accessToken": {"role": "read"}}})
+    r = hf.verify(FAKE)
+    assert r.ok and r.user == "vanzal" and r.read_only
+    monkeypatch.setattr(huggingface_hub.HfApi, "whoami",
+                        lambda self, token=None: {"name": "v", "auth": {"accessToken": {"role": "write"}}})
+    assert not hf.verify(FAKE).read_only
+    def boom(self, token=None):
+        raise RuntimeError("401 Client Error: Unauthorized")
+    monkeypatch.setattr(huggingface_hub.HfApi, "whoami", boom)
+    r = hf.verify(FAKE)
+    assert not r.ok and "kennt diesen Token nicht" in r.message

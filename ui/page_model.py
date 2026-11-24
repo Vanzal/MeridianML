@@ -8,7 +8,7 @@ import torch
 
 from magicllm import device as dev
 from magicllm.model import GPT, GPTConfig
-from ui.common import PALETTE, fmt_int, hero, need_data, next_step, restore_state, save_state, style_fig
+from ui.common import PALETTE, T, fmt_int, hero, need_data, next_step, restore_state, save_state, style_fig, themed_dot
 
 PRESETS = {
     "Winzig": dict(m_layer=2, m_embd=64, m_head=2, m_block=64),
@@ -116,7 +116,7 @@ def render() -> None:
 
     with right:
         st.subheader("Architektur")
-        st.graphviz_chart(architecture_dot(cfg), width="content")
+        st.graphviz_chart(themed_dot(architecture_dot(cfg)), width="content")
 
     c = st.columns(4)
     c[0].metric("Parameter", fmt_int(n), help=f"Genau: {n:,}")
@@ -140,7 +140,7 @@ def render() -> None:
     df = pd.DataFrame({"Bauteil": list(bd), "Parameter": list(bd.values())})
     a, b = st.columns(2)
     fig = px.pie(df, names="Bauteil", values="Parameter", hole=0.5, title="Anteile")
-    fig.update_traces(marker=dict(line=dict(color="#0A0A0A", width=2)))
+    fig.update_traces(marker=dict(line=dict(color=T["bg"], width=2)))
     a.plotly_chart(style_fig(fig, 320), width="stretch")
     fig = px.bar(df[::-1], x="Parameter", y="Bauteil", orientation="h", title="Anzahl")
     fig.update_traces(marker_color=PALETTE["fg"])

@@ -12,7 +12,7 @@ import torch
 
 from magicllm.generate import attention_maps, filter_logits, next_logits, stream_generate
 from magicllm.trainer import RUNS_DIR, list_runs, load_model
-from ui.common import PALETTE, fmt_int, hero, next_step, restore_state, save_state, store, style_fig
+from ui.common import PALETTE, T, fmt_int, heat_scale, hero, next_step, restore_state, save_state, store, style_fig
 
 DEFAULTS = dict(g_prompt="Once upon a time", g_tokens=120, g_temp=0.8, g_topk=40, g_topp=1.0, g_minp=0.0, g_rep=1.0,
                 g_seed=-1, g_stop=True)
@@ -134,7 +134,7 @@ def render() -> None:
         if res and res["run"] == run and res["rows"]:
             df = pd.DataFrame(res["rows"], columns=["Token", "p (gewählt)", "p (Modell)"])
             fig = go.Figure(go.Bar(x=list(range(len(df))), y=df["p (Modell)"], text=df["Token"],
-                                   marker=dict(color=df["p (Modell)"], colorscale=[[0, "#404040"], [1, "#FAFAFA"]], cmin=0, cmax=1),
+                                   marker=dict(color=df["p (Modell)"], colorscale=[[0, T["border_strong"]], [1, T["fg"]]], cmin=0, cmax=1),
                                    textposition="none", hovertemplate="%{text}<br>p = %{y:.1%}<extra></extra>"))
             fig.update_layout(title="Wahrscheinlichkeit, die das Modell dem gewählten Token gab",
                               xaxis_title="Position im erzeugten Text", yaxis_title="Wahrscheinlichkeit", yaxis_tickformat=".0%")
@@ -180,6 +180,6 @@ def render() -> None:
         layer = cc[0].selectbox("Schicht", range(len(maps)), format_func=lambda i: f"Schicht {i + 1}", key="g_layer")
         head = cc[1].selectbox("Kopf", range(maps[0].shape[0]), format_func=lambda i: f"Kopf {i + 1}", key="g_head")
         labels = [f"{i}:{t}" for i, t in enumerate(toks)]
-        fig = go.Figure(go.Heatmap(z=maps[layer][head], x=labels, y=labels, colorscale="Greys_r", zmin=0, zmax=1))
+        fig = go.Figure(go.Heatmap(z=maps[layer][head], x=labels, y=labels, colorscale=heat_scale(), zmin=0, zmax=1))
         fig.update_yaxes(autorange="reversed")
         st.plotly_chart(style_fig(fig, 480, legend=False), width="stretch", key="g_att")

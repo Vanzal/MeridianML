@@ -59,8 +59,8 @@ def friendly_error(e: Exception) -> str:
         return ("Dieser Datensatz benutzt ein altes Lade-Skript und wird von der aktuellen `datasets`-Version nicht "
                 "mehr unterstützt. Suche eine Variante im Parquet-Format.")
     if "gated" in low or "401" in low or "403" in low or "must be authenticated" in low:
-        return ("Dieser Datensatz ist gesperrt oder privat. Beantrage auf huggingface.co Zugriff und melde dich dann mit "
-                "`huggingface-cli login` an (oder setze die Umgebungsvariable `HF_TOKEN`).")
+        return ("Dieser Datensatz ist gesperrt oder privat. Beantrage auf huggingface.co Zugriff und hinterlege dann "
+                "unter **Einstellungen → Hugging Face** einen Token mit Leserechten (oder setze `HF_TOKEN`).")
     if "doesn't exist" in low or "not found" in low or "404" in low:
         return "Datensatz nicht gefunden – prüfe die Schreibweise (Format: `besitzer/name`)."
     if "config name is missing" in low or "pick one among" in low:

@@ -51,11 +51,11 @@ def filter_logits(logits: torch.Tensor, temperature: float, top_k: int, top_p: f
     return probs
 
 
-@torch.no_grad()
+@torch.inference_mode()        # schneller als no_grad (gemessen: docs/perf/PLAN.md, Experiment 5 + 7)
 def stream_generate(model: GPT, tok: BPETokenizer, prompt: str, max_new_tokens: int = 100,
                     temperature: float = 0.8, top_k: int = 40, top_p: float = 1.0,
                     seed: int | None = None, min_p: float = 0.0, repeat_penalty: float = 1.0,
-                    repeat_last_n: int = 64) -> Iterator[tuple[int, str, torch.Tensor, torch.Tensor]]:
+                    repeat_last_n: int = 64, use_cache: bool = True) -> Iterator[tuple[int, str, torch.Tensor, torch.Tensor]]:
     """Erzeugt Tokens einzeln. Liefert (token_id, text, probs, raw_probs) pro Schritt.
 
     ``probs`` = Verteilung nach Filter, ``raw_probs`` = Verteilung ohne Temperatur/Filter.
@@ -63,6 +63,10 @@ def stream_generate(model: GPT, tok: BPETokenizer, prompt: str, max_new_tokens: 
     Der Text wird mit einem inkrementellen UTF-8-Decoder erzeugt: Ein Umlaut wie „ä“ besteht aus zwei Bytes und
     kann auf zwei Tokens verteilt sein. Dann liefert das erste Token "" und das zweite das ganze Zeichen
     (statt zweimal „�“). Das End-Token liefert immer "".
+
+    ``use_cache``: KV-Cache benutzen (Standard). Dann wird pro Schritt nur das neue Token gerechnet. Ist der
+    Kontext voll, wird – genau wie ohne Cache – das Fenster der letzten ``block_size`` Tokens neu gerechnet. Das
+    Ergebnis ist mit und ohne Cache dasselbe; nur die Geschwindigkeit unterscheidet sich.
     """
     was_training = model.training
     model.eval()
@@ -72,10 +76,17 @@ def stream_generate(model: GPT, tok: BPETokenizer, prompt: str, max_new_tokens: 
     x = torch.tensor([ids], dtype=torch.long, device=device)
     history = list(ids)
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    block = model.cfg.block_size
+    cache = model.new_cache() if use_cache and hasattr(model, "new_cache") else None
     try:
         for step in range(max_new_tokens):
-            ctx = x[:, -model.cfg.block_size:]
-            logits, _ = model(ctx)
+            if cache is None:
+                logits, _ = model(x[:, -block:])
+            elif step > 0 and cache.length < block:      # nur das neue Token rechnen
+                logits, _ = model(x[:, -1:], cache=cache)
+            else:                                         # Start, oder Kontext voll: Fenster neu füllen
+                cache.reset()
+                logits, _ = model(x[:, -block:], cache=cache)
             last = logits[0, -1].float().cpu()          # Würfeln passiert auf der CPU (nur ein Vokabular-Vektor)
             raw = F.softmax(last, dim=-1)
             if repeat_penalty != 1.0 and repeat_last_n > 0:

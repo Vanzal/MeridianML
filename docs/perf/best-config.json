@@ -1,0 +1,12 @@
+{
+ "use_cache": true,
+ "grad_mode": "inference_mode",
+ "threads": 0,
+ "measured": {
+  "decode_tok_s": 1316.75,
+  "ttft_ms": 1.5,
+  "prefill128_tok_s": 45176.13,
+  "decode_pct_of_ceiling": 28.6
+ },
+ "machine": "2-core cloud VM (CPU only), torch 2.15, model lauf-1 (876k params, block 128)"
+}

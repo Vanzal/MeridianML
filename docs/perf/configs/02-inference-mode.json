@@ -1,0 +1,5 @@
+{
+ "use_cache": true,
+ "grad_mode": "inference_mode",
+ "threads": 0
+}

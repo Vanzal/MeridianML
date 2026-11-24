@@ -14,7 +14,8 @@ from magicllm import device as dev
 from magicllm.data import Batcher, prepared_path, safe_name
 from magicllm.model import GPT
 from magicllm.trainer import RUNS_DIR, TrainConfig, Trainer, lr_at
-from ui.common import PALETTE, fmt_int, fmt_time, hero, need_data, restore_state, save_state, store, style_fig
+from ui.common import (PALETTE, fmt_int, fmt_time, heat_scale, hero, need_data, restore_state, save_state, store,
+                       style_fig)
 from ui.page_model import DEFAULTS as MODEL_DEFAULTS
 from ui.page_model import model_config
 
@@ -291,7 +292,7 @@ def _view_attention(trainer: Trainer) -> None:
     c[2].caption(f"Stand: Schritt {snap['step']}")
     mat = maps[min(layer, n_layer - 1)][min(head, n_head - 1)].astype(np.float32)
     toks = [f"{i}:{t}" for i, t in enumerate(snap["tokens"])]
-    fig = go.Figure(go.Heatmap(z=mat, x=toks, y=toks, colorscale="Greys_r", zmin=0, zmax=1,
+    fig = go.Figure(go.Heatmap(z=mat, x=toks, y=toks, colorscale=heat_scale(), zmin=0, zmax=1,
                                colorbar=dict(title="Aufmerksamkeit")))
     fig.update_yaxes(autorange="reversed", title="schaut von (Token)")
     fig.update_xaxes(title="auf (Token)")
