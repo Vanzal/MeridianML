@@ -40,7 +40,7 @@ Mal in einem Halbsatz erklären. Hat eine **RTX 5080** – GPU-Tests auf seinem 
 ```bash
 pip install -r requirements.txt          # PyTorch: für die GPU die CUDA-Variante von pytorch.org nehmen
 streamlit run app.py                     # App
-python -m pytest -q                      # Tests (~90, < 30 s auf CPU)
+python -m pytest -q                      # Tests (~180, < 30 s auf CPU)
 python train_cli.py --datasets tinystories=2000 --steps 500 --name demo
 python generate_cli.py -m demo -p "Once upon a time" -n 120 --min-p 0.05
 python bench_cli.py -m demo                                     # Tempo + Obergrenzen
@@ -59,9 +59,9 @@ Version steht nur in `meridianlm/__init__.py` (Launcher: `version` in `main.go`,
 |---|---|
 | `app.py` | Einstieg: Theme anwenden (+ einmal neu laden), Logo, Navigation, Seitenleiste |
 | `meridianlm/tokenizer.py` | Byte-BPE, selbst geschrieben; `merge_counts` = Häufigkeit beim Verschmelzen |
-| `meridianlm/model.py` | GPT (gelernte Positionen, LayerNorm, GELU, Weight Tying) + `KVCache` |
+| `meridianlm/model.py` | GPT (gelernte Positionen, LayerNorm, GELU, Weight Tying) + `KVCache` + `MoE`; `GPTConfig.validate()` prüft alle Einstellungen (ValueError mit deutscher Meldung) |
 | `meridianlm/generate.py` | `stream_generate` (KV-Cache, `inference_mode`, inkrementeller UTF-8-Decoder), Temperatur/Top-k/Top-p/Min-p/Wiederholungs-Strafe |
-| `meridianlm/trainer.py` | Training in einem Thread, atomare Checkpoints (`model.pt`, `run.json`), `list_runs`, `load_model` |
+| `meridianlm/trainer.py` | Training in einem Thread, atomare Checkpoints (`model.pt`, `run.json`), `list_runs`, `load_model`; `CHECKPOINT_FORMAT` (jetzt 2, ohne Feld = 1) + `check_checkpoint` → `CheckpointError` mit verständlicher Meldung |
 | `meridianlm/data.py`, `catalog.py`, `custom.py` | 41 HF-Datensätze per Streaming, Mischen, Vorbereiten |
 | `meridianlm/bench.py` | Messungen, Obergrenzen, A/B mit Urteil, Ledger |
 | `meridianlm/hf_auth.py` | HF-Token speichern/prüfen (`whoami`), setzt `HF_TOKEN` beim Import von `catalog` |
@@ -97,6 +97,14 @@ Gut zu wissen:
 
 - Rust-Tokenizer: Training ≈ 3,6× schneller, identische Ausgabe; Fehler „_ geht verloren“ im Regex behoben.
 - Windows-Installer + Startprogramm (gebaut und auf Linux getestet; auf echtem Windows noch **nicht** getestet).
+- Prüfung der Modell-Einstellungen, Checkpoint-Format-Version, Prüfung beim Laden (Format, Konfiguration,
+  Gewichte, Tokenizer-Vokabular). Alte Checkpoints (ohne `format`) laden weiterhin.
+- **MoE:** `n_experts` (0 = aus, 2–64), `top_k_experts`, `moe_aux_weight` (Balance-Loss, Switch-Formel, 1.0 =
+  gleichmässig). Kein Token wird verworfen. `n_experts=0` liefert bit-genau dasselbe wie vorher (getestet). Loss
+  im Training = CE + Gewicht × Balance; angezeigt wird nur die CE (`forward(..., return_aux=True)`). Auslastung
+  pro Experte: `GPT.expert_usage()` (nur im Training gezählt), landet in `evals[*]["experts"]`. `active_params()`
+  zählt nur k Experten; `ceilings()` nutzt das. CPU-Messung in `docs/perf/PLAN.md` (≈ 0,4–0,5× von dicht).
+- Rauchtest der Seiten Modell + Training (hell/dunkel, mit/ohne MoE) über `streamlit.testing` (`tests/test_pages.py`).
 
 ## Als Nächstes (mit Vanzal abgesprochen, Reihenfolge vorgeschlagen)
 
@@ -104,10 +112,8 @@ Gut zu wissen:
    `bench_cli.py` auf CUDA. Ergebnisse in `docs/perf/PLAN.md` nachtragen (eigene Maschine, eigener Abschnitt).
 2. **GPU-Tempo-Hebel** aus `docs/perf/PLAN.md` → „Nächste Hebel“: CUDA Graphs / `torch.compile(mode="reduce-overhead")`
    für den Decode-Schritt, Würfeln auf der GPU, Batch. Jeweils mit A/B und Gleichheits-Check.
-3. **MoE (Mixture of Experts):** `GPTConfig` um `n_experts` und `top_k_experts` erweitern; MLP durch Router +
-   Experten ersetzen (Top-k-Gating, Load-Balancing-Loss), mit `n_experts=0` = heutiges Verhalten. Modell-Seite:
-   Regler + Diagramm; Parameter „gesamt“ vs. „aktiv pro Token“ zeigen; `estimate_params` und `ceilings()`
-   (aktive Experten zählen) anpassen. Tests: gleiche Ausgabe bei `n_experts=0`, Gradienten fliessen, Balance-Loss.
+3. **MoE auf der GPU schneller machen:** Experten als gestapelte Gewichte + grouped GEMM statt Python-Schleife,
+   `torch.compile` des MoE-Blocks; Exp. 8 aus `docs/perf/PLAN.md` auf der GPU wiederholen. Immer mit A/B.
 4. **GPT-2 von Hugging Face laden:** nur GPT-2-Familie passt zur Architektur (gpt2, gpt2-medium, -large, -xl).
    Gewichte umbenennen/transponieren (Conv1D → Linear), GPT-2-Byte-BPE-Tokenizer anbinden (anderes Byte-Mapping
    und Vortokenisierung als unser Tokenizer). Neue Seite oder Bereich „Modell laden“. Llama/Qwen/Mistral gehen
@@ -121,5 +127,5 @@ Gut zu wissen:
 ## Bekannte Grenzen
 
 - Kontext ist eine gelernte Positions-Tabelle (`block_size`); längere Texte nur per Fenster.
-- `ceilings()` geht von dichten Gewichten aus (bei MoE anpassen).
+- MoE verteilt die Tokens mit einer Python-Schleife über die Experten: auf der CPU spürbar langsamer als dicht.
 - Streamlit-Theme wird global gesetzt – mehrere Nutzer gleichzeitig teilen sich ein Theme (lokale App, ok).

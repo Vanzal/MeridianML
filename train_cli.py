@@ -2,6 +2,7 @@
 
 Beispiel:
     python train_cli.py --datasets tinystories=2000 shakespeare=200 --steps 500 --name test
+    python train_cli.py --datasets tinystories=2000 --experts 8 --top-k 2 --name moe     # Mixture of Experts
 """
 from __future__ import annotations
 
@@ -25,6 +26,8 @@ def main() -> None:
     ap.add_argument("--heads", type=int, default=4)
     ap.add_argument("--embd", type=int, default=128)
     ap.add_argument("--block", type=int, default=128)
+    ap.add_argument("--experts", type=int, default=0, help="Mixture of Experts: Anzahl Experten (0 = aus, sonst ab 2)")
+    ap.add_argument("--top-k", type=int, default=2, help="MoE: an so viele Experten geht jedes Token")
     ap.add_argument("--steps", type=int, default=500)
     ap.add_argument("--batch", type=int, default=0, help="0 = automatisch (GPU: so gross wie möglich)")
     ap.add_argument("--device", default="auto", help="auto | cpu | cuda | xpu | mps")
@@ -40,8 +43,12 @@ def main() -> None:
     meta = prepare(args.name, docs, args.vocab)
     print(f"  {meta['tokens_train']:,} Trainings-Tokens, {meta['chars_per_token']:.2f} Zeichen pro Token")
 
-    cfg = GPTConfig(vocab_size=meta["vocab_size"], block_size=args.block, n_layer=args.layers,
-                    n_head=args.heads, n_embd=args.embd)
+    try:
+        cfg = GPTConfig(vocab_size=meta["vocab_size"], block_size=args.block, n_layer=args.layers,
+                        n_head=args.heads, n_embd=args.embd, n_experts=args.experts,
+                        top_k_experts=min(args.top_k, args.experts) if args.experts else args.top_k)
+    except ValueError as e:
+        raise SystemExit(f"Ungültige Modell-Einstellung: {e}")
     tr = Trainer(args.name, prepared_path(args.name), cfg,
                  TrainConfig(max_steps=args.steps, batch_size=args.batch, lr=args.lr, device=args.device, amp=not args.no_amp,
                              eval_interval=max(10, args.steps // 10), sample_interval=max(50, args.steps // 4)))
@@ -52,7 +59,8 @@ def main() -> None:
         time.sleep(2)
         if tr.metrics:
             m = tr.metrics[-1]
-            print(f"Schritt {tr.step}/{args.steps}  loss {m['loss']:.3f}  {m['tok_s']:.0f} Tok/s", end="\r")
+            bal = f"  balance {m['balance']:.2f}" if "balance" in m else ""
+            print(f"Schritt {tr.step}/{args.steps}  loss {m['loss']:.3f}{bal}  {m['tok_s']:.0f} Tok/s", end="\r")
     print()
     if tr.status == "fehler":
         raise SystemExit(tr.error)

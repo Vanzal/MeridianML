@@ -12,7 +12,15 @@ import sys
 import time
 
 from meridianlm.generate import stream_generate
-from meridianlm.trainer import list_runs, load_model
+from meridianlm.trainer import CheckpointError, list_runs, load_model
+
+
+def moe_note(model) -> str:
+    """Bei MoE: wie viele Experten es gibt und wie viele Parameter pro Token aktiv sind."""
+    c = model.cfg
+    if not c.is_moe:
+        return ""
+    return f" ({model.active_params():,} aktiv, {c.n_experts} Experten, top-{c.top_k_experts})"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -47,8 +55,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     from meridianlm import device as dev
-    model, tok, ckpt = load_model(name, dev.pick_device(args.device))
-    print(f"meridian: Modell {name} · {model.num_params():,} Param. · Schritt {ckpt.get('step', '?')} · "
+    try:
+        model, tok, ckpt = load_model(name, dev.pick_device(args.device))
+    except CheckpointError as e:
+        print(f"meridian: {e}", file=sys.stderr)
+        return 1
+    print(f"meridian: Modell {name} · {model.num_params():,} Param.{moe_note(model)} · Schritt {ckpt.get('step', '?')} · "
           f"{next(model.parameters()).device}", file=sys.stderr)
 
     sys.stdout.write(args.prompt)

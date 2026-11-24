@@ -126,16 +126,17 @@ def measure_matmul(device: torch.device, n: int | None = None, repeats: int = 6)
 def ceilings(model: GPT, bandwidth_gbs: float, gflops: float, ctx: int) -> dict:
     """Theoretische Obergrenzen (siehe docs/perf/THEORY.md).
 
-    decode: pro Token müssen alle Gewichte einmal aus dem Speicher gelesen werden (das Token-Embedding dient
+    decode: pro Token müssen alle (bei MoE: alle aktiven) Gewichte einmal aus dem Speicher gelesen werden (das Token-Embedding dient
             gleichzeitig als Ausgabe-Schicht), dazu der KV-Cache bis zur aktuellen Länge. → bandbreiten-begrenzt.
     prefill: ~2 FLOPs pro Parameter und Token plus Attention; praktisch erreichbar sind ~50 % der Spitze.
     """
     c = model.cfg
     elem = next(model.parameters()).element_size()
-    weight_bytes = model.num_params() * elem
+    active = model.active_params()      # bei MoE werden pro Token nur k Experten gelesen und gerechnet
+    weight_bytes = active * elem
     kv_bytes = 2 * c.n_layer * ctx * c.n_embd * elem
     decode_bytes = weight_bytes + kv_bytes
-    flops_tok = 2 * model.num_params() + 4 * c.n_layer * c.n_embd * ctx
+    flops_tok = 2 * active + 4 * c.n_layer * c.n_embd * ctx
     return {
         "bytes_per_token": decode_bytes,
         "decode_tok_s": bandwidth_gbs * 1e9 / decode_bytes,

@@ -18,7 +18,8 @@ PRESETS = {
     "Riesig": dict(m_layer=12, m_embd=768, m_head=12, m_block=512),      # ca. 90 Mio. Parameter
     "Extrem": dict(m_layer=16, m_embd=1024, m_head=16, m_block=512),     # ca. 210 Mio. Parameter
 }
-DEFAULTS = dict(PRESETS["Klein"], m_drop=0.0)
+DEFAULTS = dict(PRESETS["Klein"], m_drop=0.0, m_moe=False, m_experts=8, m_topk=2)
+EXPERT_OPTIONS = [2, 4, 8, 16, 32]
 EMBD_OPTIONS = [32, 48, 64, 96, 128, 192, 256, 288, 384, 512, 640, 768, 1024]
 BLOCK_OPTIONS = [32, 64, 128, 192, 256, 384, 512, 1024]
 
@@ -36,12 +37,20 @@ def _apply_gpu_max() -> None:
 
 def model_config(vocab_size: int) -> GPTConfig:
     s = st.session_state
+    moe = bool(s.get("m_moe"))
+    experts = int(s.get("m_experts", 8)) if moe else 0
     return GPTConfig(vocab_size=vocab_size, block_size=s["m_block"], n_layer=s["m_layer"], n_head=s["m_head"],
-                     n_embd=s["m_embd"], dropout=s["m_drop"])
+                     n_embd=s["m_embd"], dropout=s["m_drop"], n_experts=experts,
+                     top_k_experts=min(int(s.get("m_topk", 2)), experts) if moe else 2)
 
 
 def architecture_dot(cfg: GPTConfig) -> str:
     d, H, L, V, T = cfg.n_embd, cfg.n_head, cfg.n_layer, cfg.vocab_size, cfg.block_size
+    if cfg.is_moe:
+        mlp_node = (f'mlp [label="Mixture of Experts\\nRouter wählt {cfg.top_k_experts} von {cfg.n_experts} Experten'
+                    f'\\nje Experte: {d} → {4 * d} → {d}  (GELU)", color="#34D399", penwidth=1.8];')
+    else:
+        mlp_node = f'mlp [label="MLP\\n{d} → {4 * d} → {d}  (GELU)", color="#34D399", penwidth=1.8];'
     return f"""
 digraph G {{
   rankdir=BT; bgcolor="transparent"; nodesep=0.5; ranksep=0.32;
@@ -60,7 +69,7 @@ digraph G {{
     att [label="Causal Self-Attention\\n{H} Köpfe × {d // H} Dimensionen", color="#F59E0B", penwidth=1.8];
     add1 [label="+", shape=circle, width=0.3, fixedsize=true, fillcolor="#262626"];
     ln2 [label="LayerNorm"];
-    mlp [label="MLP\\n{d} → {4 * d} → {d}  (GELU)", color="#34D399", penwidth=1.8];
+    {mlp_node}
     add2 [label="+", shape=circle, width=0.3, fixedsize=true, fillcolor="#262626"];
     ln1 -> att -> add1 -> ln2 -> mlp -> add2;
   }}
@@ -107,26 +116,47 @@ def render() -> None:
                          help="So viele Tokens kann das Modell gleichzeitig überblicken.")
         st.slider("Dropout", 0.0, 0.3, step=0.05, key="m_drop",
                   help="Zufälliges Abschalten von Neuronen gegen Überanpassung. Bei viel Daten: 0.")
+        st.toggle("Mixture of Experts (MoE)", key="m_moe",
+                  help="Statt eines MLP pro Schicht gibt es mehrere „Experten“. Ein Router schickt jedes Token nur "
+                       "zu den passendsten: viel mehr Parameter, aber pro Token kaum mehr Rechenaufwand.")
+        if st.session_state["m_moe"]:
+            st.select_slider("Experten pro Schicht", EXPERT_OPTIONS, key="m_experts",
+                             help="So viele MLPs gibt es in jeder Schicht.")
+            top_opts = [k for k in (1, 2, 3, 4) if k <= st.session_state["m_experts"]]
+            if st.session_state["m_topk"] not in top_opts:
+                st.session_state["m_topk"] = max(top_opts)
+            st.select_slider("Aktive Experten pro Token (top-k)", top_opts, key="m_topk",
+                             help="An so viele Experten geht jedes Token. 2 ist üblich (z. B. bei Mixtral).")
         save_state("model")
 
     cfg = model_config(meta["vocab_size"])
     with torch.device("meta"):      # nur Formen, kein Speicher: auch 200-Mio.-Modelle zählen sofort
         model = GPT(cfg)
     n = model.num_params()
+    n_active = model.active_params()
 
     with right:
         st.subheader("Architektur")
         st.graphviz_chart(themed_dot(architecture_dot(cfg)), width="content")
 
     c = st.columns(4)
-    c[0].metric("Parameter", fmt_int(n), help=f"Genau: {n:,}")
+    if cfg.is_moe:
+        c[0].metric("Parameter", fmt_int(n), delta=f"{fmt_int(n_active)} aktiv pro Token", delta_color="off",
+                    delta_arrow="off", help=f"Gesamt: {n:,}. Aktiv: {n_active:,} ({n_active / n:.0%}) – mit diesen "
+                                            "Gewichten wird pro Token gerechnet (nur die gewählten Experten).")
+    else:
+        c[0].metric("Parameter", fmt_int(n), help=f"Genau: {n:,}")
     c[1].metric("Speicher fürs Training", f"{n * 16 / 1e6:.0f} MB",
-                help="Gewichte + Gradienten + 2 Adam-Zustände, je 4 Byte")
-    c[2].metric("Rechenaufwand / Token", f"{6 * n / 1e6:.1f} MFLOPs", help="Faustregel: 6 × Parameter")
+                help="Gewichte + Gradienten + 2 Adam-Zustände, je 4 Byte (bei MoE: alle Experten)")
+    c[2].metric("Rechenaufwand / Token", f"{6 * n_active / 1e6:.1f} MFLOPs",
+                help="Faustregel: 6 × aktive Parameter")
     ratio = meta["tokens_train"] / n
     c[3].metric("Daten-Tokens pro Parameter", f"{ratio:.1f}",
                 help="Faustregel (Chinchilla): ca. 20 Tokens pro Parameter sind optimal.")
-    if not on_gpu and n > 15_000_000:
+    if cfg.is_moe and not on_gpu:
+        st.info("MoE lohnt sich vor allem auf der GPU. Auf der CPU kostet das Verteilen der Tokens auf die Experten "
+                "oft mehr Zeit, als es spart.", icon=":material/info:")
+    if not on_gpu and n_active > 15_000_000:
         st.warning(f"Ein Modell mit {fmt_int(n)} Parametern ist auf der **CPU sehr langsam** (Stunden bis Tage). "
                    "Dafür ist eine GPU gedacht – oder wähle eine kleinere Vorlage.")
     if ratio < 5:
@@ -140,13 +170,18 @@ def render() -> None:
     df = pd.DataFrame({"Bauteil": list(bd), "Parameter": list(bd.values())})
     a, b = st.columns(2)
     fig = px.pie(df, names="Bauteil", values="Parameter", hole=0.5, title="Anteile")
-    fig.update_traces(marker=dict(line=dict(color=T["bg"], width=2)))
-    a.plotly_chart(style_fig(fig, 320), width="stretch")
+    fig.update_traces(marker=dict(line=dict(color=T["bg"], width=2)), textposition="inside")
+    fig.update_layout(uniformtext_minsize=10, uniformtext_mode="hide")     # winzige Anteile ohne Beschriftung
+    fig = style_fig(fig, 360)
+    fig.update_layout(legend=dict(orientation="h", y=-0.04, yanchor="top"), margin=dict(t=44, b=8))
+    a.plotly_chart(fig, width="stretch")
     fig = px.bar(df[::-1], x="Parameter", y="Bauteil", orientation="h", title="Anzahl")
     fig.update_traces(marker_color=PALETTE["fg"])
     b.plotly_chart(style_fig(fig, 320, legend=False), width="stretch")
     st.caption("Bei kleinen Modellen mit grossem Vokabular steckt ein Grossteil der Parameter im Embedding. "
-               "Bei grösseren Modellen dominieren Attention + MLP.")
+               "Bei grösseren Modellen dominieren Attention + MLP"
+               + (" – bei MoE vor allem die Experten, von denen pro Token aber nur wenige rechnen." if cfg.is_moe
+                  else "."))
 
     st.divider()
     next_step("train", "Weiter zum Training")

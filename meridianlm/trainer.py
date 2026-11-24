@@ -21,6 +21,10 @@ from .generate import attention_maps, generate_text
 from .model import GPT, GPTConfig
 from .tokenizer import BPETokenizer
 
+# Version des Checkpoint-Formats. 1 = ohne Feld (bis 2.1), 2 = mit "format" + MoE-Felder in model_cfg.
+# Bei jeder Änderung, die alte Programme nicht lesen können, erhöhen.
+CHECKPOINT_FORMAT = 2
+
 RUNS_DIR = Path(os.environ.get("MERIDIAN_RUNS_DIR") or Path(__file__).resolve().parent.parent / "runs")
 PROBE_TEXT = "Once upon a time, there was a little girl named Lily. She loved to play."
 
@@ -159,7 +163,8 @@ class Trainer:
     def save_checkpoint(self, name: str = "model.pt") -> None:
         assert self.model is not None
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        state = {"model": {k: v.detach().cpu() for k, v in self.model.state_dict().items()},
+        state = {"format": CHECKPOINT_FORMAT,
+                 "model": {k: v.detach().cpu() for k, v in self.model.state_dict().items()},
                  "model_cfg": self.model_cfg.to_dict(), "train_cfg": self.cfg.to_dict(), "step": self.step}
         _atomic_write_bytes(self.run_dir / name, lambda p: torch.save(state, p))
 
@@ -225,6 +230,8 @@ class Trainer:
             self._on_eval(batcher, gen, metrics_file, first=True)
 
             log_every = 1 if self.device.type == "cpu" else 10
+            is_moe = self.model_cfg.is_moe
+            moe_w = self.model_cfg.moe_aux_weight if is_moe else 0.0
             pending: list[tuple] = []
             last_flush = [time.time()]
 
@@ -234,9 +241,11 @@ class Trainer:
                 tokens = sum(p[4] for p in pending)
                 tok_s = tokens / max(1e-9, now - last_flush[0])
                 self.elapsed = now - self.start_time
-                for st, loss_t, gn_t, lr_, _ in pending:
+                for st, loss_t, gn_t, lr_, _, aux_t in pending:
                     rec = {"step": st, "loss": float(loss_t), "lr": lr_, "grad_norm": float(gn_t),
                            "tok_s": tok_s, "time": round(self.elapsed, 2)}
+                    if is_moe:
+                        rec["balance"] = float(aux_t)
                     self.metrics.append(rec)
                     metrics_file.write(json.dumps({"type": "step", **rec}) + "\n")
                 pending.clear()
@@ -251,7 +260,7 @@ class Trainer:
                     g["lr"] = lr
                 x, y = batcher.get("train", cfg.batch_size, gen)
                 with dev.autocast(self.device, cfg.amp):
-                    _, loss = fwd(x, y)
+                    _, loss, aux = fwd(x, y, return_aux=True)
                 opt.zero_grad(set_to_none=True)
                 scaler.scale(loss).backward()
                 scaler.unscale_(opt)
@@ -260,7 +269,7 @@ class Trainer:
                 scaler.update()
 
                 # Werte erst alle paar Schritte von der GPU holen: jedes .item() zwingt die GPU zum Warten
-                pending.append((step, loss.detach(), gnorm, lr, x.numel()))
+                pending.append((step, loss.detach() - moe_w * aux.detach(), gnorm, lr, x.numel(), aux.detach()))
                 self.tokens_seen += x.numel()
                 self.step = step
                 due = (step % cfg.eval_interval == 0 or step % cfg.sample_interval == 0 or step == cfg.max_steps)
@@ -291,6 +300,9 @@ class Trainer:
         losses = self._estimate_loss(batcher, gen)
         rec = {"step": self.step, "train": losses["train"], "val": losses["val"],
                "ppl": math.exp(min(20, losses["val"])), "tokens": self.tokens_seen}
+        assert self.model is not None
+        if self.model_cfg.is_moe and not first:     # Anteil der Tokens pro Experte seit der letzten Auswertung
+            rec["experts"] = [[round(v, 4) for v in layer] for layer in self.model.expert_usage(reset=True)]
         self.evals.append(rec)
         f.write(json.dumps({"type": "eval", **rec}) + "\n")
         f.flush()
@@ -342,10 +354,44 @@ def load_run_metrics(run_name: str) -> tuple[list[dict], list[dict]]:
     return steps, evals
 
 
+class CheckpointError(ValueError):
+    """Ein Checkpoint lässt sich nicht laden – die Meldung sagt, warum und was zu tun ist."""
+
+
+def check_checkpoint(ckpt: dict, tok: BPETokenizer | None = None) -> GPTConfig:
+    """Prüft einen geladenen Checkpoint, bevor das Modell gebaut wird, und liefert seine Konfiguration.
+
+    Fängt ab: Checkpoints einer neueren Meridian-Version, fehlende Teile, unmögliche Einstellungen und einen
+    Tokenizer, dessen Tokens nicht ins Vokabular des Modells passen."""
+    if not isinstance(ckpt, dict) or "model" not in ckpt or "model_cfg" not in ckpt:
+        raise CheckpointError("Das ist kein Meridian-Checkpoint (es fehlen Gewichte oder Konfiguration).")
+    fmt = ckpt.get("format", 1)
+    if not isinstance(fmt, int) or fmt < 1:
+        raise CheckpointError(f"Unbekanntes Checkpoint-Format: {fmt!r}")
+    if fmt > CHECKPOINT_FORMAT:
+        raise CheckpointError(f"Dieser Checkpoint stammt von einer neueren Meridian-Version (Format {fmt}, "
+                              f"diese Version kennt bis {CHECKPOINT_FORMAT}). Bitte Meridian aktualisieren.")
+    try:
+        cfg = GPTConfig.from_dict(ckpt["model_cfg"])
+    except (TypeError, ValueError) as e:
+        raise CheckpointError(f"Die Modell-Einstellungen im Checkpoint sind ungültig: {e}") from e
+    if tok is not None and tok.vocab_size > cfg.vocab_size:
+        raise CheckpointError(f"Tokenizer ({tok.vocab_size} Tokens) und Modell ({cfg.vocab_size} Tokens) passen "
+                              "nicht zusammen – gehören sie zum selben Lauf?")
+    return cfg
+
+
 def load_model(run_name: str, device: "torch.device | None" = None) -> tuple[GPT, BPETokenizer, dict]:
     d = RUNS_DIR / run_name
+    if not (d / "model.pt").exists():
+        raise CheckpointError(f"Lauf '{run_name}' hat noch keinen Checkpoint (model.pt fehlt).")
     ckpt = torch.load(d / "model.pt", map_location="cpu", weights_only=True)
-    model = GPT(GPTConfig.from_dict(ckpt["model_cfg"]))
-    model.load_state_dict(ckpt["model"])
+    tok = BPETokenizer.load(d / "tokenizer.json")
+    model = GPT(check_checkpoint(ckpt, tok))
+    try:
+        model.load_state_dict(ckpt["model"])
+    except RuntimeError as e:
+        raise CheckpointError("Die Gewichte im Checkpoint passen nicht zur gespeicherten Modell-Konfiguration "
+                              f"(Datei beschädigt oder von Hand verändert).\n{e}") from e
     model.to(device or dev.pick_device()).eval()      # zum Generieren ebenfalls die GPU nutzen
-    return model, BPETokenizer.load(d / "tokenizer.json"), ckpt
+    return model, tok, ckpt

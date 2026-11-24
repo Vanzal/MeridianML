@@ -26,7 +26,7 @@ selbst gebaut, **ohne fertige Modelle oder Tokenizer-Bibliotheken**:
 | Baustein | Selbst geschrieben in | Was es macht |
 |---|---|---|
 | **BPE-Tokenizer** | [`meridianlm/tokenizer.py`](meridianlm/tokenizer.py) | zerlegt Text in Tokens, lernt häufige Buchstabenfolgen selbst |
-| **GPT-Transformer** | [`meridianlm/model.py`](meridianlm/model.py) | Embeddings, Causal Self-Attention, MLP, LayerNorm, Residuals |
+| **GPT-Transformer** | [`meridianlm/model.py`](meridianlm/model.py) | Embeddings, Causal Self-Attention, MLP oder Mixture of Experts, LayerNorm, Residuals |
 | **Trainings-Schleife** | [`meridianlm/trainer.py`](meridianlm/trainer.py) | AdamW, Warmup + Kosinus-Lernrate, Gradient Clipping, Validierung |
 | **Text-Erzeugung** | [`meridianlm/generate.py`](meridianlm/generate.py) | Temperatur, Top-k, Top-p, Min-p, Wiederholungs-Strafe (wie llama.cpp) |
 | **Daten-Pipeline** | [`meridianlm/catalog.py`](meridianlm/catalog.py), [`data.py`](meridianlm/data.py) | 41 Hugging-Face-Datensätze per Streaming laden und mischen |
@@ -51,7 +51,7 @@ Verwendet wird nur **PyTorch** (für Tensoren und automatische Ableitung), **`da
 | **Daten** | Leere Datensätze werden sauber gemeldet; Warnung, wenn ein vorbereiteter Datensatz überschrieben wird |
 | **Tests** | Neue Tests für Sampling, UTF-8-Streaming, atomare Checkpoints, CLI, Emoji-Freiheit der Oberfläche; GitHub-Actions-Workflow |
 
-## Neu: Tempo, Themes und Hugging-Face-Token
+## Neu: Tempo, Themes, MoE und Hugging-Face-Token
 
 | Bereich | Was |
 |---|---|
@@ -60,6 +60,8 @@ Verwendet wird nur **PyTorch** (für Tensoren und automatische Ableitung), **`da
 | **Heller Modus** | Schalter in der Seitenleiste |
 | **Eigene Themes** | Unter **Einstellungen → Design**: Vorlagen Dunkel, Hell, Terminal; jede Farbe per Farbwähler änderbar, Live-Vorschau, Kontrast-Prüfung, als eigenes Theme speichern, exportieren und importieren (.json) |
 | **Tokenizer in Rust** | Optionaler Rust-Kern [`rust/meridian_fastbpe`](rust/meridian_fastbpe): Tokenizer-Training **≈ 3,6× schneller**, Encoding neuer Texte ≈ 1,3×, Ergebnis bit-genau gleich wie in Python (getestet). Fehlt er, läuft alles in Python. Dabei gefunden und behoben: Unterstriche („_“) gingen beim Encoding verloren – wichtig für Code-Datensätze. Details: [`docs/perf/PLAN.md`](docs/perf/PLAN.md) |
+| **Mixture of Experts (MoE)** | Unter **Modell → Mixture of Experts**: statt einem MLP pro Schicht 2–32 „Experten“, ein Router schickt jedes Token an die 1–4 passendsten (Top-k, wie bei Mixtral). Viel mehr Parameter bei wenig mehr Rechenaufwand pro Token. Die App zeigt Parameter gesamt und aktiv pro Token; im Training einen Balance-Loss (verteilt die Tokens gleichmässig) und die Auslastung jedes Experten pro Schicht. Kommandozeile: `--experts 8 --top-k 2`. Auf einer kleinen CPU ist MoE langsamer als ein normales Modell (Messung in [`docs/perf/PLAN.md`](docs/perf/PLAN.md)) – gedacht für die GPU |
+| **Sichere Checkpoints** | Checkpoints tragen eine Format-Version. Beim Laden wird geprüft, ob Einstellungen, Gewichte und Tokenizer zusammenpassen; statt kryptischer Fehler gibt es eine verständliche Meldung. Ungültige Modell-Einstellungen werden schon beim Anlegen abgelehnt. Alte Checkpoints laden weiterhin |
 | **Hugging-Face-Token** | Unter **Einstellungen → Hugging Face**: Token mit Leserechten eintragen (für gesperrte Datensätze). Wird geprüft (wem gehört er, nur lesen?), nur lokal gespeichert (`settings/hf_token`, Rechte 600, nicht in Git) und nie vollständig angezeigt |
 
 <table>
@@ -149,6 +151,7 @@ Ohne App geht es auch über die Kommandozeile – Training und Text-Erzeugung, b
 
 ```bash
 python train_cli.py --datasets tinystories=5000 shakespeare=300 --steps 1500 --name test
+python train_cli.py --datasets tinystories=5000 --experts 8 --top-k 2 --name moe     # Mixture of Experts
 python generate_cli.py --list
 python generate_cli.py -m test -p "Once upon a time" -n 120 --temp 0.8 --min-p 0.05 --repeat-penalty 1.1 -s 42
 ```

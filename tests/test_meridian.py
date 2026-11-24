@@ -246,7 +246,7 @@ def test_kv_cache_refuses_to_overflow_context():
     cache = m.new_cache()
     with torch.no_grad():
         m(torch.zeros(1, 8, dtype=torch.long), cache=cache)
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError, match="Kontext"):
             m(torch.zeros(1, 1, dtype=torch.long), cache=cache)
 
 

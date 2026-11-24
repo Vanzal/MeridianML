@@ -1,0 +1,53 @@
+{
+ "machine": {
+  "bandwidth_gbs": 17.878244622199407,
+  "gflops": 306.0378264246503
+ },
+ "rows": [
+  {
+   "name": "dicht",
+   "decode": 920.27,
+   "prefill128": 41899.14,
+   "train": 26410.88768799036,
+   "params": 876416,
+   "active": 876416,
+   "decode_ceiling": 4509.679262266978
+  },
+  {
+   "name": "moe-8x2",
+   "decode": 581.71,
+   "prefill128": 17150.32,
+   "train": 10764.377573754417,
+   "params": 4568448,
+   "active": 1407360,
+   "decode_ceiling": 2936.5441533708868
+  },
+  {
+   "name": "dicht",
+   "decode": 1412.51,
+   "prefill128": 44490.15,
+   "train": 28476.38469811217,
+   "params": 876416,
+   "active": 876416,
+   "decode_ceiling": 4509.679262266978
+  },
+  {
+   "name": "moe-8x2",
+   "decode": 467.97,
+   "prefill128": 17228.24,
+   "train": 9634.67125403904,
+   "params": 4568448,
+   "active": 1407360,
+   "decode_ceiling": 2936.5441533708868
+  },
+  {
+   "name": "dicht",
+   "decode": 798.48,
+   "prefill128": 45731.1,
+   "train": 21953.458002339103,
+   "params": 876416,
+   "active": 876416,
+   "decode_ceiling": 4509.679262266978
+  }
+ ]
+}

@@ -110,3 +110,28 @@ Training ≈ 3,6× schneller, Encoding neuer Texte ≈ 1,3× schneller, nichts l
 bremst: die Regex-Vor-Zerlegung in Python (0,9 s beim Training, 1,2 s beim Encoding von 16 MB). Nächster Hebel wäre
 eine eigene, zu Python **bit-genau** passende Vor-Zerlegung in Rust (Unicode-Klassen wie Pythons `str.isalnum`) –
 nur mit Gleichheits-Test über alle Code-Points.
+
+---
+
+# Mixture of Experts (MoE)
+
+Gleiche Maschine (2-Kern-CPU). Modell: 4 Schichten, Breite 128, Kontext 128, Vokabular 521. Dicht: 876k Parameter.
+MoE 8 Experten, top-2: 4,57 Mio. Parameter, davon 1,41 Mio. aktiv pro Token (1,6× so viel Rechnen wie dicht).
+Abwechselnd gemessen (dicht – MoE – dicht – MoE – dicht), je Median aus 6. Rohdaten: `moe-vs-dense.json`.
+
+| Kennzahl | Dicht | MoE 8×2 | Faktor |
+|---|---|---|---|
+| Decode (tok/s) | 798 / 920 / 1'413 | 468 / 582 | ≈ 0,5× |
+| Prefill 128 (tok/s) | 41'899 / 44'490 / 45'731 | 17'150 / 17'228 | ≈ 0,39× |
+| Training (tok/s, Batch 16) | 21'953 / 26'411 / 28'476 | 9'635 / 10'764 | ≈ 0,39× |
+
+Erwartet wären ≈ 0,62× (1,6× mehr aktive Rechnung). Der Rest ist das Verteilen der Tokens auf die Experten
+(Python-Schleife über 8 Experten, `nonzero`, `index_add_`): auf einer kleinen CPU teurer als die Rechnung selbst.
+Darum zeigt die App auf der CPU den Hinweis „MoE lohnt sich vor allem auf der GPU“. Auf der RTX 5080 **noch nicht gemessen**.
+
+| # | Änderung | Ziel | Ergebnis | Urteil | Grund |
+|---|---|---|---|---|---|
+| 8 | MoE: Schleife nur über Experten, die Tokens bekommen (`chosen.unique()`) statt über alle 8 | decode | 571 / 661 gegen Kontrollen 677 / 650 / 530 | verworfen | erster Kandidat schlechter als beide Kontrollen, zweiter besser – innerhalb Rauschen (Kontrollen streuen ±30 %). Ausgabe identisch. Rohdaten: `moe-ab-unique.json`. Auf GPU nochmals prüfen: dort spart es Synchronisationen. |
+
+Nächste MoE-Hebel (GPU): alle Experten als ein gestapelter Tensor + `torch.bmm` / grouped GEMM statt Python-Schleife;
+`torch.compile` des MoE-Blocks; Tokens nach Experte sortieren statt `nonzero` pro Experte.

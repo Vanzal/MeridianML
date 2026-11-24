@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from meridianlm import bench
-from meridianlm.trainer import RUNS_DIR, list_runs, load_model
+from meridianlm.trainer import RUNS_DIR, CheckpointError, list_runs, load_model
 from ui.common import PALETTE, fmt_int, hero, next_step, store, style_fig
 
 LEVERS = {
@@ -72,7 +72,8 @@ def render() -> None:
     try:
         model, tok, _ = _load(run, ckpt.stat().st_mtime)
     except Exception as e:
-        st.error(f"Modell konnte nicht geladen werden: {type(e).__name__}: {e}")
+        why = str(e) if isinstance(e, CheckpointError) else f"{type(e).__name__}: {e}"
+        st.error(f"Modell konnte nicht geladen werden: {why}")
         st.stop()
     device = str(next(model.parameters()).device)
     if busy:

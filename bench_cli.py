@@ -48,6 +48,14 @@ def _table(rows: list[tuple[str, bench.BenchResult]]) -> str:
     return "\n".join(lines)
 
 
+def moe_note(model) -> str:
+    """Bei MoE: wie viele Experten es gibt und wie viele Parameter pro Token aktiv sind."""
+    c = model.cfg
+    if not c.is_moe:
+        return ""
+    return f" ({model.active_params():,} aktiv, {c.n_experts} Experten, top-{c.top_k_experts})"
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-m", "--model", help="Lauf (Ordner unter runs/). Standard: der neueste")
@@ -72,11 +80,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Lauf '{name}' nicht gefunden.", file=sys.stderr)
         return 1
     from meridianlm import device as dev
-    model, tok, _ = load_model(name, dev.pick_device(args.device))
+    try:
+        model, tok, _ = load_model(name, dev.pick_device(args.device))
+    except trainer.CheckpointError as e:
+        print(f"meridian-bench: {e}", file=sys.stderr)
+        return 1
     ledger = args.ledger or (trainer.RUNS_DIR / name / "bench.jsonl")
     kw = dict(n_tokens=args.n_gen, prompt_len=args.n_prompt, prefill_lengths=tuple(args.prefill), samples=args.samples)
     device = next(model.parameters()).device
-    print(f"meridian-bench: {name} · {model.num_params():,} Param. · {device} · Median aus {max(6, args.samples)} "
+    print(f"meridian-bench: {name} · {model.num_params():,} Param.{moe_note(model)} · {device} · Median aus {max(6, args.samples)} "
           "Messungen", file=sys.stderr)
 
     if args.ab:

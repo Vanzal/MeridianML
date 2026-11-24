@@ -106,7 +106,9 @@ def render() -> None:
 
         cfg = model_config(meta["vocab_size"])
         n_params = GPT.estimate_params(cfg)
-        st.caption(f"Modell: **{fmt_int(n_params)} Parameter** · {cfg.n_layer} Schichten · {cfg.n_head} Köpfe · "
+        moe = (f" ({fmt_int(GPT.estimate_active_params(cfg))} aktiv) · MoE {cfg.top_k_experts} von {cfg.n_experts} "
+               "Experten" if cfg.is_moe else "")
+        st.caption(f"Modell: **{fmt_int(n_params)} Parameter**{moe} · {cfg.n_layer} Schichten · {cfg.n_head} Köpfe · "
                    f"Breite {cfg.n_embd} · Kontext {cfg.block_size} · Datensatz **{meta['name']}** "
                    f"({fmt_int(meta['tokens_train'])} Tokens)")
 
@@ -267,6 +269,33 @@ def _view_curves(trainer: Trainer, m: pd.DataFrame, ev: pd.DataFrame) -> None:
         fig = go.Figure(go.Bar(x=ev["step"], y=gap, marker_color=np.where(gap > 0.3, PALETTE["orange"], PALETTE["green"])))
         fig.update_layout(title="Lücke Val − Train (gross = Overfitting)", xaxis_title="Schritt")
         b.plotly_chart(style_fig(fig, 270, legend=False), width="stretch", key="c_gap")
+    if trainer.model_cfg.is_moe:
+        _view_experts(trainer, mt, ev)
+
+
+def _view_experts(trainer: Trainer, mt: pd.DataFrame, ev: pd.DataFrame) -> None:
+    """MoE: Wie gleichmässig verteilt der Router die Tokens auf die Experten?"""
+    mc = trainer.model_cfg
+    st.subheader("Experten (Mixture of Experts)")
+    a, b = st.columns(2)
+    if "balance" in mt:
+        fig = go.Figure(go.Scatter(x=mt["step"], y=mt["balance"], mode="lines", line=dict(color=PALETTE["cyan"], width=2)))
+        fig.add_hline(y=1.0, line_dash="dot", line_color=PALETTE["grey"], annotation_text="perfekt verteilt")
+        fig.update_layout(title="Balance-Loss (1.0 = alle Experten gleich oft)", xaxis_title="Schritt")
+        a.plotly_chart(style_fig(fig, 300, legend=False), width="stretch", key="c_balance")
+    usage = next((e["experts"] for e in reversed(trainer.evals) if e.get("experts")), None)
+    if usage:
+        mat = np.array(usage) * mc.n_experts           # 1.0 = genau der faire Anteil
+        fig = go.Figure(go.Heatmap(z=mat, x=[f"E{i}" for i in range(mc.n_experts)],
+                                   y=[f"Schicht {i}" for i in range(len(usage))], colorscale=heat_scale(),
+                                   zmin=0, zmax=max(2.0, float(mat.max())),
+                                   hovertemplate="%{y} · %{x}: %{z:.2f}× fairer Anteil<extra></extra>"))
+        fig.update_layout(title="Auslastung pro Experte (1.0 = fairer Anteil)", yaxis_autorange="reversed")
+        b.plotly_chart(style_fig(fig, 300, legend=False), width="stretch", key="c_experts")
+    else:
+        b.info("Die Auslastung erscheint nach der ersten Auswertung.", icon=":material/hourglass_top:")
+    st.caption(f"{mc.n_experts} Experten pro Schicht, jedes Token geht an {mc.top_k_experts}. Ein Experte, der "
+               "kaum drankommt, lernt nichts – der Balance-Loss bestraft das.")
 
 
 def _view_samples(trainer: Trainer) -> None:

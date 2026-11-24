@@ -24,7 +24,10 @@ def render() -> None:
     df = pd.DataFrame([{
         "Lauf": r["name"], "Daten": r.get("data"), "Parameter": r.get("n_params"),
         "Schichten": r.get("model_cfg", {}).get("n_layer"), "Breite": r.get("model_cfg", {}).get("n_embd"),
-        "Kontext": r.get("model_cfg", {}).get("block_size"), "Schritte": f"{r.get('step', 0)}/{r.get('max_steps', 0)}",
+        "Kontext": r.get("model_cfg", {}).get("block_size"),
+        "Experten": (f"{r['model_cfg']['top_k_experts']}/{r['model_cfg']['n_experts']}"
+                     if r.get("model_cfg", {}).get("n_experts") else "–"),
+        "Schritte": f"{r.get('step', 0)}/{r.get('max_steps', 0)}",
         "Lernrate": r.get("train_cfg", {}).get("lr"), "Batch": r.get("train_cfg", {}).get("batch_size"),
         "Val-Loss": r.get("best_val"),
         "Perplexity": round(math.exp(min(20.0, r["best_val"])), 1) if r.get("best_val") is not None else None,

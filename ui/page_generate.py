@@ -11,7 +11,7 @@ import streamlit as st
 import torch
 
 from meridianlm.generate import attention_maps, filter_logits, next_logits, stream_generate
-from meridianlm.trainer import RUNS_DIR, list_runs, load_model
+from meridianlm.trainer import RUNS_DIR, CheckpointError, list_runs, load_model
 from ui.common import PALETTE, T, fmt_int, heat_scale, hero, next_step, restore_state, save_state, store, style_fig
 
 DEFAULTS = dict(g_prompt="Once upon a time", g_tokens=120, g_temp=0.8, g_topk=40, g_topp=1.0, g_minp=0.0, g_rep=1.0,
@@ -65,7 +65,8 @@ def render() -> None:
     try:
         model, tok, _ = _load(run, ckpt.stat().st_mtime)
     except Exception as e:      # z. B. Lauf gerade gelöscht oder Datei beschädigt
-        st.error(f"Modell **{run}** konnte nicht geladen werden: {type(e).__name__}: {e}")
+        why = str(e) if isinstance(e, CheckpointError) else f"{type(e).__name__}: {e}"
+        st.error(f"Modell **{run}** konnte nicht geladen werden: {why}")
         st.stop()
 
     left, right = st.columns([0.55, 0.45], gap="large")
