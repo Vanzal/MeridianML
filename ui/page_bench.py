@@ -7,8 +7,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from magicllm import bench
-from magicllm.trainer import RUNS_DIR, list_runs, load_model
+from meridianlm import bench
+from meridianlm.trainer import RUNS_DIR, list_runs, load_model
 from ui.common import PALETTE, fmt_int, hero, next_step, store, style_fig
 
 LEVERS = {

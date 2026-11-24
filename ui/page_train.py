@@ -10,10 +10,10 @@ import plotly.graph_objects as go
 import streamlit as st
 import torch
 
-from magicllm import device as dev
-from magicllm.data import Batcher, prepared_path, safe_name
-from magicllm.model import GPT
-from magicllm.trainer import RUNS_DIR, TrainConfig, Trainer, lr_at
+from meridianlm import device as dev
+from meridianlm.data import Batcher, prepared_path, safe_name
+from meridianlm.model import GPT
+from meridianlm.trainer import RUNS_DIR, TrainConfig, Trainer, lr_at
 from ui.common import (PALETTE, fmt_int, fmt_time, heat_scale, hero, need_data, restore_state, save_state, store,
                        style_fig)
 from ui.page_model import DEFAULTS as MODEL_DEFAULTS

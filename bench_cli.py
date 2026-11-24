@@ -14,9 +14,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from magicllm import bench
-from magicllm import trainer
-from magicllm.trainer import list_runs, load_model
+from meridianlm import bench
+from meridianlm import trainer
+from meridianlm.trainer import list_runs, load_model
 
 
 def _parse_set(pairs: list[str], base: bench.BenchConfig) -> bench.BenchConfig:
@@ -71,12 +71,12 @@ def main(argv: list[str] | None = None) -> int:
     if name not in {r["name"] for r in runs}:
         print(f"Lauf '{name}' nicht gefunden.", file=sys.stderr)
         return 1
-    from magicllm import device as dev
+    from meridianlm import device as dev
     model, tok, _ = load_model(name, dev.pick_device(args.device))
     ledger = args.ledger or (trainer.RUNS_DIR / name / "bench.jsonl")
     kw = dict(n_tokens=args.n_gen, prompt_len=args.n_prompt, prefill_lengths=tuple(args.prefill), samples=args.samples)
     device = next(model.parameters()).device
-    print(f"magic-bench: {name} · {model.num_params():,} Param. · {device} · Median aus {max(6, args.samples)} "
+    print(f"meridian-bench: {name} · {model.num_params():,} Param. · {device} · Median aus {max(6, args.samples)} "
           "Messungen", file=sys.stderr)
 
     if args.ab:

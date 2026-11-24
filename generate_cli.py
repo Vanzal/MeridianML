@@ -11,8 +11,8 @@ import argparse
 import sys
 import time
 
-from magicllm.generate import stream_generate
-from magicllm.trainer import list_runs, load_model
+from meridianlm.generate import stream_generate
+from meridianlm.trainer import list_runs, load_model
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -46,9 +46,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Lauf '{name}' nicht gefunden. Verfügbar: {', '.join(r['name'] for r in runs)}", file=sys.stderr)
         return 1
 
-    from magicllm import device as dev
+    from meridianlm import device as dev
     model, tok, ckpt = load_model(name, dev.pick_device(args.device))
-    print(f"magic-llm: Modell {name} · {model.num_params():,} Param. · Schritt {ckpt.get('step', '?')} · "
+    print(f"meridian: Modell {name} · {model.num_params():,} Param. · Schritt {ckpt.get('step', '?')} · "
           f"{next(model.parameters()).device}", file=sys.stderr)
 
     sys.stdout.write(args.prompt)
@@ -69,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.flush()
     dt = time.perf_counter() - t0
     print(file=sys.stdout)
-    print(f"\nmagic-llm: {n} Tokens in {dt:.2f} s ({n / dt if dt > 0 else 0:.1f} tok/s)", file=sys.stderr)
+    print(f"\nmeridian: {n} Tokens in {dt:.2f} s ({n / dt if dt > 0 else 0:.1f} tok/s)", file=sys.stderr)
     return 0
 
 

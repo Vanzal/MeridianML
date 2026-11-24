@@ -1,4 +1,4 @@
-"""Tests für die Neuerungen von Magic LLM: Sampling (Min-p, Wiederholungs-Strafe), UTF-8-Streaming,
+"""Tests für die Neuerungen von Meridian: Sampling (Min-p, Wiederholungs-Strafe), UTF-8-Streaming,
 atomare Checkpoints, robuste Lauf-Liste, Kommandozeile und eine emoji-freie Oberfläche."""
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 import torch
 
-from magicllm.generate import apply_repeat_penalty, filter_logits, generate_text, stream_generate
-from magicllm.model import GPT, GPTConfig
-from magicllm.tokenizer import EOT, BPETokenizer
+from meridianlm.generate import apply_repeat_penalty, filter_logits, generate_text, stream_generate
+from meridianlm.model import GPT, GPTConfig
+from meridianlm.tokenizer import EOT, BPETokenizer
 
 ROOT = Path(__file__).resolve().parent.parent
 GERMAN = ["Grüezi mitenand! Äpfel, Öl und Übermut. Schöne Grüsse aus Zürich.\n" * 3,
@@ -125,10 +125,10 @@ def test_generate_text_can_stop_at_end_token():
 # ------------------------------------------------------------- Läufe und Checkpoints
 @pytest.fixture
 def trained_run(tmp_path, monkeypatch):
-    from magicllm import trainer as trainer_mod
-    from magicllm.data import prepare
+    from meridianlm import trainer as trainer_mod
+    from meridianlm.data import prepare
     monkeypatch.setattr(trainer_mod, "RUNS_DIR", tmp_path / "runs")
-    monkeypatch.setattr("magicllm.data.PREPARED_DIR", tmp_path / "prepared")
+    monkeypatch.setattr("meridianlm.data.PREPARED_DIR", tmp_path / "prepared")
     meta = prepare("de", {"x": GERMAN * 10}, 300)
     cfg = GPTConfig(vocab_size=meta["vocab_size"], block_size=16, n_layer=1, n_head=2, n_embd=32)
     tr = trainer_mod.Trainer("demo", tmp_path / "prepared" / "de", cfg,
@@ -178,8 +178,8 @@ def test_generate_cli_runs(trained_run, capsys):
 
 
 def test_prepare_rejects_empty_data(tmp_path, monkeypatch):
-    from magicllm.data import prepare
-    monkeypatch.setattr("magicllm.data.PREPARED_DIR", tmp_path / "prepared")
+    from meridianlm.data import prepare
+    monkeypatch.setattr("meridianlm.data.PREPARED_DIR", tmp_path / "prepared")
     with pytest.raises(ValueError):
         prepare("leer", {"x": []}, 300)
 
@@ -202,18 +202,20 @@ EMOJI = re.compile(
 @pytest.mark.parametrize("path", sorted(str(p.relative_to(ROOT)) for p in
                                         [ROOT / "app.py", ROOT / "generate_cli.py", ROOT / "train_cli.py",
                                          ROOT / "README.md", ROOT / "docs" / "DATASETS.md",
-                                         *(ROOT / "ui").glob("*.py"), *(ROOT / "magicllm").glob("*.py")]))
+                                         *(ROOT / "ui").glob("*.py"), *(ROOT / "meridianlm").glob("*.py")]))
 def test_no_emojis_in_user_facing_files(path):
     text = (ROOT / path).read_text(encoding="utf-8")
     hits = sorted({c for c in EMOJI.findall(text)})
     assert not hits, f"Emojis in {path}: {hits}"
 
 
-def test_branding_is_magic_llm():
-    for p in [ROOT / "app.py", *(ROOT / "ui").glob("*.py"), ROOT / "README.md"]:
+def test_branding_is_meridian():
+    for p in [ROOT / "app.py", *(ROOT / "ui").glob("*.py"), ROOT / "README.md", ROOT / "AGENTS.md"]:
         text = p.read_text(encoding="utf-8")
         assert "minillm" not in text.lower(), p
-    assert 'page_title="Magic LLM"' in (ROOT / "app.py").read_text(encoding="utf-8")
+        assert "magic llm" not in text.lower() and "magicllm" not in text.lower(), p
+    assert 'page_title="Meridian"' in (ROOT / "app.py").read_text(encoding="utf-8")
+    assert (ROOT / "assets" / "meridian-logo.svg").exists() and (ROOT / "assets" / "meridian-icon.svg").exists()
 
 
 def test_merge_counts_are_recorded_at_merge_time():
@@ -249,7 +251,7 @@ def test_kv_cache_refuses_to_overflow_context():
 
 
 def test_greedy_output_identical_with_and_without_cache_past_window():
-    from magicllm.bench import greedy_equal
+    from meridianlm.bench import greedy_equal
     tok = BPETokenizer.train(GERMAN, 300)
     torch.manual_seed(1)
     m = GPT(GPTConfig(vocab_size=tok.vocab_size, block_size=16, n_layer=2, n_head=2, n_embd=32))
@@ -266,7 +268,7 @@ def test_sampled_output_identical_with_and_without_cache():
 
 
 def test_bench_run_ceilings_and_ab(tmp_path):
-    from magicllm import bench
+    from meridianlm import bench
     tok = BPETokenizer.train(GERMAN, 300)
     m = _tiny(tok)
     machine = {"bandwidth_gbs": 10.0, "gflops": 100.0}
@@ -285,7 +287,7 @@ def test_bench_run_ceilings_and_ab(tmp_path):
 
 
 def test_bench_flags_degenerate_output():
-    from magicllm.bench import degenerate
+    from meridianlm.bench import degenerate
     assert degenerate([5] * 20) and degenerate([]) and not degenerate([1, 2, 3] * 5)
 
 
@@ -307,7 +309,7 @@ def settings(tmp_path, monkeypatch):
     from ui import theme as th
     monkeypatch.setattr(th, "SETTINGS_DIR", tmp_path)
     monkeypatch.setattr(th, "THEME_FILE", tmp_path / "theme.json")
-    monkeypatch.setenv("MAGICLLM_SETTINGS_DIR", str(tmp_path))
+    monkeypatch.setenv("MERIDIAN_SETTINGS_DIR", str(tmp_path))
     return th
 
 
@@ -378,8 +380,8 @@ def test_themed_dot_recolors_in_one_pass(settings):
 # ------------------------------------------------------------------------- Hugging-Face-Token
 @pytest.fixture
 def hf(tmp_path, monkeypatch):
-    from magicllm import hf_auth
-    monkeypatch.setenv("MAGICLLM_SETTINGS_DIR", str(tmp_path))
+    from meridianlm import hf_auth
+    monkeypatch.setenv("MERIDIAN_SETTINGS_DIR", str(tmp_path))
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.delenv(hf_auth._ENV_FROM_FILE, raising=False)
     return hf_auth

@@ -6,9 +6,9 @@ import html
 import plotly.express as px
 import streamlit as st
 
-from magicllm import custom
-from magicllm.catalog import BY_KEY, CATALOG, iter_texts
-from magicllm.data import list_prepared, load_selection, prepare, safe_name
+from meridianlm import custom
+from meridianlm.catalog import BY_KEY, CATALOG, iter_texts
+from meridianlm.data import list_prepared, load_selection, prepare, safe_name
 from ui.common import T, fmt_int, hero, next_step, style_fig
 
 DIFF_CLASS = {"sehr leicht": "good", "leicht": "good", "mittel": "", "schwer": "warn", "sehr schwer": "warn", "unbekannt": ""}

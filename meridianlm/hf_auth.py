@@ -18,11 +18,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TOKEN_RE = re.compile(r"^hf_[A-Za-z0-9]{30,}$")
-_ENV_FROM_FILE = "_MAGICLLM_HF_TOKEN_FROM_FILE"
+_ENV_FROM_FILE = "_MERIDIAN_HF_TOKEN_FROM_FILE"
 
 
 def settings_dir() -> Path:
-    return Path(os.environ.get("MAGICLLM_SETTINGS_DIR") or ROOT / "settings")
+    return Path(os.environ.get("MERIDIAN_SETTINGS_DIR") or ROOT / "settings")
 
 
 def token_file() -> Path:

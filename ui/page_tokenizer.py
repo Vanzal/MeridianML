@@ -8,8 +8,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from magicllm.data import prepared_path
-from magicllm.tokenizer import BPETokenizer
+from meridianlm.data import prepared_path
+from meridianlm.tokenizer import BPETokenizer
 from ui.common import PALETTE, fmt_int, hero, need_data, style_fig, token_chips
 
 
@@ -94,7 +94,7 @@ def render() -> None:
     with st.expander("Experiment: Wie wirkt sich die Vokabular-Grösse aus?", icon=":material/science:"):
         st.caption("Wir trainieren mehrere Tokenizer auf einem kleinen Textausschnitt und messen die Kompression.")
         if st.button("Experiment starten"):
-            from magicllm.catalog import RAW_DIR, read_documents
+            from meridianlm.catalog import RAW_DIR, read_documents
             files = sorted(RAW_DIR.glob("*.txt"))
             if not files:
                 st.info("Keine Rohtexte gefunden – lade zuerst einen Datensatz auf der Seite Daten.")

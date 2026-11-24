@@ -6,8 +6,8 @@ import plotly.express as px
 import streamlit as st
 import torch
 
-from magicllm import device as dev
-from magicllm.model import GPT, GPTConfig
+from meridianlm import device as dev
+from meridianlm.model import GPT, GPTConfig
 from ui.common import PALETTE, T, fmt_int, hero, need_data, next_step, restore_state, save_state, style_fig, themed_dot
 
 PRESETS = {

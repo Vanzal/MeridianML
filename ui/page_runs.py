@@ -8,7 +8,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from magicllm.trainer import RUNS_DIR, list_runs, load_run_metrics
+from meridianlm.trainer import RUNS_DIR, list_runs, load_run_metrics
 from ui.common import COLORS, fmt_time, hero, next_step, store, style_fig
 
 
@@ -77,7 +77,7 @@ def render() -> None:
         c1.download_button("Checkpoint (.pt)", data=lambda p=ckpt: p.read_bytes(), file_name=f"{sel}.pt",
                            mime="application/octet-stream", icon=":material/download:", width="stretch",
                            help=f"Gewichte + Konfiguration ({ckpt.stat().st_size / 1e6:.1f} MB). Laden mit "
-                                "magicllm.trainer.load_model oder generate_cli.py.")
+                                "meridianlm.trainer.load_model oder generate_cli.py.")
     tokf = run_dir / "tokenizer.json"
     if tokf.exists():
         c2.download_button("Tokenizer (.json)", data=lambda p=tokf: p.read_bytes(), file_name=f"{sel}-tokenizer.json",

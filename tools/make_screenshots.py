@@ -1,4 +1,4 @@
-"""Magic LLM – erzeugt die Screenshots für die README (braucht: pip install playwright, Google Chrome, laufende App).
+"""Meridian – erzeugt die Screenshots für die README (braucht: pip install playwright, Google Chrome, laufende App).
 
     streamlit run app.py            # in einem Terminal
     python tools/make_screenshots.py --dataset <name>   # im anderen

@@ -1,4 +1,4 @@
-"""Magic LLM – gemeinsame Helfer für alle Seiten der App: Farben, CSS, Diagramm-Stil, geteilter Zustand."""
+"""Meridian – gemeinsame Helfer für alle Seiten der App: Farben, CSS, Diagramm-Stil, geteilter Zustand."""
 from __future__ import annotations
 
 import colorsys
@@ -9,7 +9,7 @@ import re
 import plotly.graph_objects as go
 import streamlit as st
 
-from magicllm.data import PREPARED_DIR, list_prepared
+from meridianlm.data import PREPARED_DIR, list_prepared
 
 PALETTE: dict[str, str] = {}        # wird von apply_theme() aus dem aktiven Theme gefüllt
 COLORS: list[str] = []
@@ -209,7 +209,7 @@ MARK_SVG = ('<svg class="ml-logo" viewBox="0 0 32 32" fill="currentColor" aria-h
 
 def hero(title: str, subtitle: str, crumb: str = "", logo: bool = False) -> None:
     """Seitenkopf im Stil der llama.cpp-WebUI / eines Terminals: Pfad, Titel, Untertitel (optional mit Logo)."""
-    path = f"magic-llm <span>/</span> <b>{html.escape(crumb or title.lower())}</b>"
+    path = f"meridian <span>/</span> <b>{html.escape(crumb or title.lower())}</b>"
     mark = MARK_SVG if logo else ""
     st.markdown(f'<div class="ml-head"><div class="ml-crumb">{path}</div>'
                 f'<div class="ml-title">{mark}<h1>{html.escape(title)}</h1></div><p>{subtitle}</p></div>',

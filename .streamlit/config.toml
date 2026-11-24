@@ -1,4 +1,4 @@
-# Magic LLM – neutrales, monochromes Dark-Theme (angelehnt an die llama.cpp-WebUI und das omp-Terminal).
+# Meridian – neutrales, monochromes Dark-Theme (angelehnt an die llama.cpp-WebUI und das omp-Terminal).
 [theme]
 base = "dark"
 primaryColor = "#FAFAFA"

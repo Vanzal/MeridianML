@@ -6,7 +6,7 @@ import json
 
 import streamlit as st
 
-from magicllm import hf_auth
+from meridianlm import hf_auth
 from ui import theme as th
 from ui.common import hero
 
@@ -35,13 +35,13 @@ def _preview(t: th.Theme) -> str:
   <div style="width:150px;background:{t.sidebar};border-right:1px solid {t.border};padding:14px">
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
       <svg viewBox="0 0 32 32" width="20" height="20" fill="{t.fg}">{MARK}</svg>
-      <b style="color:{t.fg};font-size:13px">Magic LLM</b></div>
+      <b style="color:{t.fg};font-size:13px">Meridian</b></div>
     <div style="background:{k['surface2']};color:{t.fg};border-radius:6px;padding:4px 8px;font-size:12px">Start</div>
     <div style="color:{t.muted};padding:4px 8px;font-size:12px">Training</div>
     <div style="color:{t.muted};padding:4px 8px;font-size:12px">Generieren</div>
   </div>
   <div style="flex:1;padding:16px 18px">
-    <div style="font:11px ui-monospace,monospace;color:{k['dim']}">magic-llm / vorschau</div>
+    <div style="font:11px ui-monospace,monospace;color:{k['dim']}">meridian / vorschau</div>
     <div style="color:{t.fg};font-size:18px;font-weight:600;margin:4px 0 2px">Vorschau</div>
     <div style="color:{t.muted};font-size:12px;margin-bottom:12px">So sieht dein Theme aus.</div>
     <div style="display:flex;gap:10px;margin-bottom:12px">
@@ -116,7 +116,7 @@ def _design_tab() -> None:
             st.toast(f"Theme „{saved}“ gespeichert.")
             st.rerun()
     b2.download_button("Exportieren (.json)", json.dumps(edited.to_dict(), ensure_ascii=False, indent=1),
-                       file_name=f"magic-llm-theme-{edited.name.lower().replace(' ', '-')}.json",
+                       file_name=f"meridian-theme-{edited.name.lower().replace(' ', '-')}.json",
                        mime="application/json", icon=":material/download:", width="stretch")
     if pick not in th.PRESETS:
         with b3.popover("Löschen", icon=":material/delete:", width="stretch"):

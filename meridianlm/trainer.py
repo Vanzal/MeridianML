@@ -21,7 +21,7 @@ from .generate import attention_maps, generate_text
 from .model import GPT, GPTConfig
 from .tokenizer import BPETokenizer
 
-RUNS_DIR = Path(os.environ.get("MAGICLLM_RUNS_DIR") or Path(__file__).resolve().parent.parent / "runs")
+RUNS_DIR = Path(os.environ.get("MERIDIAN_RUNS_DIR") or Path(__file__).resolve().parent.parent / "runs")
 PROBE_TEXT = "Once upon a time, there was a little girl named Lily. She loved to play."
 
 

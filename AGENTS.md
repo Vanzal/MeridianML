@@ -5,7 +5,7 @@ was als Nächstes kommt.
 
 ## Projekt in einem Satz
 
-**Magic LLM** (Repo `Vanzal/MagicAI-Studio`): ein kleines GPT-Sprachmodell, komplett selbst gebaut (BPE-Tokenizer,
+**Meridian** (Repo `Vanzal/Meridian`, vorher `Vanzal/MagicAI-Studio`): ein kleines GPT-Sprachmodell, komplett selbst gebaut (BPE-Tokenizer,
 Transformer, Training, Sampling) in PyTorch, mit einer Streamlit-App, die jeden Schritt live sichtbar macht, plus
 Kommandozeilen-Tools im Stil von llama.cpp.
 
@@ -17,11 +17,12 @@ Mal in einem Halbsatz erklären. Hat eine **RTX 5080** – GPU-Tests auf seinem 
 ## Regeln (nicht brechen)
 
 1. **Keine Emojis** in App, README und Doku. Icons über Material-Symbole (`:material/name:`), Status über
-   CSS-Punkte (`dot()` in `ui/common.py`). `tests/test_magic.py::test_no_emojis_in_user_facing_files` prüft das.
+   CSS-Punkte (`dot()` in `ui/common.py`). `tests/test_meridian.py::test_no_emojis_in_user_facing_files` prüft das.
 2. **Oberfläche auf Deutsch** (Schweizer Schreibweise: „ss“ statt „ß“ in UI-Texten). Code-Kommentare ebenfalls
    Deutsch, wie im Rest des Projekts.
-3. **Name ist „Magic LLM“.** „MiniLLM“ darf in README und UI nicht vorkommen (Test prüft das). Der
-   Copyright-Hinweis in `LICENSE` (MIT, Joel Weber) bleibt – das verlangt die Lizenz.
+3. **Name ist „Meridian“.** Alte Projektnamen dürfen in README, UI und dieser Datei nicht vorkommen (Test
+   `test_branding_is_meridian`). Der Copyright-Hinweis in `LICENSE` (MIT, Joel Weber) bleibt – das verlangt die Lizenz.
+   Python-Paket heisst `meridianlm` (nicht `meridian`: das ist Googles Meridian-Bibliothek).
 4. **Design:** neutrales Schwarz/Weiss wie die llama.cpp-WebUI, Terminal-Akzente wie omp. Farben kommen **nur**
    aus dem aktiven Theme (`ui/theme.py` → `T`, `PALETTE`, `COLORS` in `ui/common.py`). Keine festen Hex-Farben in
    Seiten; Graphviz-Diagramme über `themed_dot()`, Heatmaps über `heat_scale()`.
@@ -32,7 +33,7 @@ Mal in einem Halbsatz erklären. Hat eine **RTX 5080** – GPU-Tests auf seinem 
    loggen oder committen; nur maskiert anzeigen (`hf_auth.mask`).
 7. **Vor jedem Commit:** `python -m pytest -q` muss grün sein. Bei UI-Änderungen die App starten und die
    betroffenen Seiten anschauen (hell **und** dunkel).
-8. Commits gehen direkt auf `main` von `Vanzal/MagicAI-Studio`, wenn Vanzal es so will – sonst Branch.
+8. Commits gehen direkt auf `main` von `Vanzal/Meridian`, wenn Vanzal es so will – sonst Branch.
 
 ## Starten
 
@@ -47,20 +48,20 @@ python bench_cli.py -m demo --ab use_cache=false use_cache=true # A/B-Test
 python tools/make_logo.py assets                                # Logo-Dateien neu erzeugen
 ```
 
-Umgebungsvariablen: `MAGICLLM_DATA_DIR`, `MAGICLLM_RUNS_DIR`, `MAGICLLM_SETTINGS_DIR`, `HF_TOKEN`.
+Umgebungsvariablen: `MERIDIAN_DATA_DIR`, `MERIDIAN_RUNS_DIR`, `MERIDIAN_SETTINGS_DIR`, `HF_TOKEN`.
 
 ## Aufbau
 
 | Pfad | Inhalt |
 |---|---|
 | `app.py` | Einstieg: Theme anwenden (+ einmal neu laden), Logo, Navigation, Seitenleiste |
-| `magicllm/tokenizer.py` | Byte-BPE, selbst geschrieben; `merge_counts` = Häufigkeit beim Verschmelzen |
-| `magicllm/model.py` | GPT (gelernte Positionen, LayerNorm, GELU, Weight Tying) + `KVCache` |
-| `magicllm/generate.py` | `stream_generate` (KV-Cache, `inference_mode`, inkrementeller UTF-8-Decoder), Temperatur/Top-k/Top-p/Min-p/Wiederholungs-Strafe |
-| `magicllm/trainer.py` | Training in einem Thread, atomare Checkpoints (`model.pt`, `run.json`), `list_runs`, `load_model` |
-| `magicllm/data.py`, `catalog.py`, `custom.py` | 41 HF-Datensätze per Streaming, Mischen, Vorbereiten |
-| `magicllm/bench.py` | Messungen, Obergrenzen, A/B mit Urteil, Ledger |
-| `magicllm/hf_auth.py` | HF-Token speichern/prüfen (`whoami`), setzt `HF_TOKEN` beim Import von `catalog` |
+| `meridianlm/tokenizer.py` | Byte-BPE, selbst geschrieben; `merge_counts` = Häufigkeit beim Verschmelzen |
+| `meridianlm/model.py` | GPT (gelernte Positionen, LayerNorm, GELU, Weight Tying) + `KVCache` |
+| `meridianlm/generate.py` | `stream_generate` (KV-Cache, `inference_mode`, inkrementeller UTF-8-Decoder), Temperatur/Top-k/Top-p/Min-p/Wiederholungs-Strafe |
+| `meridianlm/trainer.py` | Training in einem Thread, atomare Checkpoints (`model.pt`, `run.json`), `list_runs`, `load_model` |
+| `meridianlm/data.py`, `catalog.py`, `custom.py` | 41 HF-Datensätze per Streaming, Mischen, Vorbereiten |
+| `meridianlm/bench.py` | Messungen, Obergrenzen, A/B mit Urteil, Ledger |
+| `meridianlm/hf_auth.py` | HF-Token speichern/prüfen (`whoami`), setzt `HF_TOKEN` beim Import von `catalog` |
 | `ui/common.py` | Design-System (CSS mit `--ml-*`-Variablen), `hero()`, `style_fig()`, Theme-Helfer |
 | `ui/theme.py` | Presets Dunkel/Hell/Terminal, eigene Themes, `apply_to_streamlit()` (setzt `theme.*` zur Laufzeit) |
 | `ui/page_*.py` | Seiten: start, data, tokenizer, model, train, generate, runs, bench (Tempo), settings |
@@ -68,7 +69,7 @@ Umgebungsvariablen: `MAGICLLM_DATA_DIR`, `MAGICLLM_RUNS_DIR`, `MAGICLLM_SETTINGS
 | `docs/perf/` | Tempo-Log (`PLAN.md`), Theorie (`THEORY.md`), `ledger.jsonl`, `configs/`, `best-config.json` |
 | `docs/logo/concepts/` | 8 Logo-Konzepte + Vorschau; gewählt wurde „Token M prompt“ (`M_`) |
 | `assets/` | finales Logo (Marke, Logo hell/dunkel, App-Icon); Wortmarke als Pfade (Inter Display SemiBold, OFL) |
-| `tests/test_core.py`, `tests/test_magic.py` | Tests |
+| `tests/test_core.py`, `tests/test_meridian.py` | Tests |
 
 Gut zu wissen:
 - Die App liest das Theme bei jedem Lauf aus `settings/theme.json`; `apply_to_streamlit` ändert Streamlits
@@ -80,7 +81,7 @@ Gut zu wissen:
 
 ## Erledigt
 
-- Rebrand zu Magic LLM, neues Design, keine Emojis, Logo (`M_`), README ohne MiniLLM.
+- Rebrand zu Meridian, neues Design, keine Emojis, Logo (`M_`), README ohne alte Projektnamen.
 - Fehler behoben: Umlaute beim Streamen, halb geschriebene Checkpoints, kaputte Lauf-Ordner, GPU-Absturz im
   Gewichts-Histogramm, unsichere Lauf-Namen, Löschen ohne Bestätigung, falsche Merge-Zahlen.
 - Min-p, Wiederholungs-Strafe, Stopp am Text-Ende, tok/s-Statistik, Download von Text/Checkpoints.

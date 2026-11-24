@@ -8,7 +8,7 @@ Angewendet wird ein Theme auf zwei Ebenen:
      ``theme.*``, die sich zur Laufzeit setzen lassen (danach einmal neu laden).
   2. Die CSS-Variablen ``--ml-*`` der App und die Farben aller Diagramme.
 
-Gespeichert wird in ``settings/theme.json`` (oder ``$MAGICLLM_SETTINGS_DIR``).
+Gespeichert wird in ``settings/theme.json`` (oder ``$MERIDIAN_SETTINGS_DIR``).
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SETTINGS_DIR = Path(os.environ.get("MAGICLLM_SETTINGS_DIR") or ROOT / "settings")
+SETTINGS_DIR = Path(os.environ.get("MERIDIAN_SETTINGS_DIR") or ROOT / "settings")
 THEME_FILE = SETTINGS_DIR / "theme.json"
 HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
 

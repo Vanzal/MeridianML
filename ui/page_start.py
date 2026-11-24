@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import streamlit as st
 
-from magicllm.catalog import CATALOG
-from magicllm.data import list_prepared
-from magicllm.trainer import list_runs
+from meridianlm.catalog import CATALOG
+from meridianlm.data import list_prepared
+from meridianlm.trainer import list_runs
 from ui.common import hero, next_step, themed_dot
 
 PIPELINE_DOT = """
@@ -48,7 +48,7 @@ STEPS = [
 
 
 def render() -> None:
-    hero("Magic LLM",
+    hero("Meridian",
          "Ein eigenes Sprachmodell – von Grund auf gebaut, mit Hugging-Face-Daten trainiert und live sichtbar gemacht.",
          crumb="start", logo=True)
 

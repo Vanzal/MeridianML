@@ -1,4 +1,4 @@
-"""Magic LLM – Hauptprogramm der App.   Start:  streamlit run app.py"""
+"""Meridian – Hauptprogramm der App.   Start:  streamlit run app.py"""
 from __future__ import annotations
 
 import json
@@ -9,8 +9,8 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 import streamlit as st
 
-from magicllm import __version__
-from magicllm import device as dev
+from meridianlm import __version__
+from meridianlm import device as dev
 from ui import (page_bench, page_data, page_generate, page_model, page_runs, page_settings, page_start, page_tokenizer,
                 page_train, theme)
 from ui.common import PAGES, STATUS_DOT, dot, fmt_time, prepared_names, setup_page, store
@@ -28,10 +28,10 @@ if st.session_state.get("_theme_sig") != _sig:
 
 
 def _logo_files(t: theme.Theme) -> tuple[str, str]:
-    """Logo und Tab-Icon in den Farben des Themes (Vorlagen: assets/magic-llm-logo.svg und magic-llm-icon.svg)."""
+    """Logo und Tab-Icon in den Farben des Themes (Vorlagen: assets/meridian-logo.svg und meridian-icon.svg)."""
     k = theme.tokens(t)
-    logo = (ASSETS / "magic-llm-logo.svg").read_text(encoding="utf-8").replace('fill="#0A0A0A"', f'fill="{t.fg}"')
-    icon = ((ASSETS / "magic-llm-icon.svg").read_text(encoding="utf-8")
+    logo = (ASSETS / "meridian-logo.svg").read_text(encoding="utf-8").replace('fill="#0A0A0A"', f'fill="{t.fg}"')
+    icon = ((ASSETS / "meridian-icon.svg").read_text(encoding="utf-8")
             .replace('fill="#0A0A0A"', 'fill="__TILE__"').replace('fill="#FAFAFA"', f'fill="{k["on_primary"]}"')
             .replace("__TILE__", t.primary))
     out = theme.SETTINGS_DIR / "logo"
@@ -45,11 +45,11 @@ def _logo_files(t: theme.Theme) -> tuple[str, str]:
         return str(lp), str(ip)
     except OSError:                       # schreibgeschützt: mitgelieferte Dateien nehmen
         dark = t.base == "dark"
-        return str(ASSETS / ("magic-llm-logo-dark.svg" if dark else "magic-llm-logo.svg")), str(ASSETS / "magic-llm-icon.svg")
+        return str(ASSETS / ("meridian-logo-dark.svg" if dark else "meridian-logo.svg")), str(ASSETS / "meridian-icon.svg")
 
 
 _logo, _icon = _logo_files(_theme)
-st.set_page_config(page_title="Magic LLM", page_icon=_icon, layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Meridian", page_icon=_icon, layout="wide", initial_sidebar_state="expanded")
 st.logo(_logo, icon_image=_icon, size="large")
 setup_page()
 
@@ -105,7 +105,7 @@ with st.sidebar:
         st.session_state.pop("_theme_sig", None)
         st.session_state.pop("set_theme_pick", None)
         st.rerun()
-    st.markdown(f'<div class="ml-side-row">magic-llm <span class="ml-brand-ver">v{__version__}</span></div>',
+    st.markdown(f'<div class="ml-side-row">meridian <span class="ml-brand-ver">v{__version__}</span></div>',
                 unsafe_allow_html=True)
     st.caption("GPT von Grund auf in PyTorch · Tokenizer, Modell, Training und Sampling selbst gebaut")
 

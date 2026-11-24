@@ -18,7 +18,7 @@ from . import hf_auth
 
 hf_auth.apply()          # gespeicherten Hugging-Face-Token (falls vorhanden) für datasets/huggingface_hub setzen
 
-DATA_DIR = Path(os.environ.get("MAGICLLM_DATA_DIR") or Path(__file__).resolve().parent.parent / "data")
+DATA_DIR = Path(os.environ.get("MERIDIAN_DATA_DIR") or Path(__file__).resolve().parent.parent / "data")
 RAW_DIR = DATA_DIR / "raw"
 
 

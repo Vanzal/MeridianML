@@ -10,8 +10,8 @@ import plotly.graph_objects as go
 import streamlit as st
 import torch
 
-from magicllm.generate import attention_maps, filter_logits, next_logits, stream_generate
-from magicllm.trainer import RUNS_DIR, list_runs, load_model
+from meridianlm.generate import attention_maps, filter_logits, next_logits, stream_generate
+from meridianlm.trainer import RUNS_DIR, list_runs, load_model
 from ui.common import PALETTE, T, fmt_int, heat_scale, hero, next_step, restore_state, save_state, store, style_fig
 
 DEFAULTS = dict(g_prompt="Once upon a time", g_tokens=120, g_temp=0.8, g_topk=40, g_topp=1.0, g_minp=0.0, g_rep=1.0,

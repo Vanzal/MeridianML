@@ -1,11 +1,11 @@
 <p>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/magic-llm-logo-dark.svg">
-    <img src="assets/magic-llm-logo.svg" alt="Magic LLM" height="48">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/meridian-logo-dark.svg">
+    <img src="assets/meridian-logo.svg" alt="Meridian" height="48">
   </picture>
 </p>
 
-# Magic LLM
+# Meridian
 
 **Ein eigenes Sprachmodell (GPT) – von Grund auf gebaut, mit Hugging-Face-Daten trainiert und in einer App live sichtbar gemacht.**
 
@@ -25,18 +25,18 @@ selbst gebaut, **ohne fertige Modelle oder Tokenizer-Bibliotheken**:
 
 | Baustein | Selbst geschrieben in | Was es macht |
 |---|---|---|
-| **BPE-Tokenizer** | [`magicllm/tokenizer.py`](magicllm/tokenizer.py) | zerlegt Text in Tokens, lernt häufige Buchstabenfolgen selbst |
-| **GPT-Transformer** | [`magicllm/model.py`](magicllm/model.py) | Embeddings, Causal Self-Attention, MLP, LayerNorm, Residuals |
-| **Trainings-Schleife** | [`magicllm/trainer.py`](magicllm/trainer.py) | AdamW, Warmup + Kosinus-Lernrate, Gradient Clipping, Validierung |
-| **Text-Erzeugung** | [`magicllm/generate.py`](magicllm/generate.py) | Temperatur, Top-k, Top-p, Min-p, Wiederholungs-Strafe (wie llama.cpp) |
-| **Daten-Pipeline** | [`magicllm/catalog.py`](magicllm/catalog.py), [`data.py`](magicllm/data.py) | 41 Hugging-Face-Datensätze per Streaming laden und mischen |
+| **BPE-Tokenizer** | [`meridianlm/tokenizer.py`](meridianlm/tokenizer.py) | zerlegt Text in Tokens, lernt häufige Buchstabenfolgen selbst |
+| **GPT-Transformer** | [`meridianlm/model.py`](meridianlm/model.py) | Embeddings, Causal Self-Attention, MLP, LayerNorm, Residuals |
+| **Trainings-Schleife** | [`meridianlm/trainer.py`](meridianlm/trainer.py) | AdamW, Warmup + Kosinus-Lernrate, Gradient Clipping, Validierung |
+| **Text-Erzeugung** | [`meridianlm/generate.py`](meridianlm/generate.py) | Temperatur, Top-k, Top-p, Min-p, Wiederholungs-Strafe (wie llama.cpp) |
+| **Daten-Pipeline** | [`meridianlm/catalog.py`](meridianlm/catalog.py), [`data.py`](meridianlm/data.py) | 41 Hugging-Face-Datensätze per Streaming laden und mischen |
 | **App** | [`app.py`](app.py), [`ui/`](ui) | Streamlit-Oberfläche mit vielen interaktiven Diagrammen |
 | **Kommandozeile** | [`train_cli.py`](train_cli.py), [`generate_cli.py`](generate_cli.py) | Trainieren und Text erzeugen ohne App |
 
 Verwendet wird nur **PyTorch** (für Tensoren und automatische Ableitung), **`datasets`** (zum Laden der Daten),
 **Streamlit** und **Plotly** (für die App).
 
-## Was ist neu in Magic LLM 2.0?
+## Was ist neu in Meridian 2.0?
 
 | Bereich | Änderung |
 |---|---|
@@ -110,8 +110,8 @@ Voraussetzung: **Python 3.10+**. Wenn eine **Grafikkarte (GPU)** da ist, wird si
 ausgelastet (siehe [GPU-Unterstützung](#gpu-unterstützung)). Ohne GPU läuft alles auf der CPU, nur langsamer.
 
 ```bash
-git clone <URL dieses Repos> magic-llm
-cd magic-llm
+git clone <URL dieses Repos> meridian
+cd meridian
 pip install -r requirements.txt
 streamlit run app.py
 ```
@@ -250,7 +250,7 @@ mal ein ganzes Wort („Katze“), mal ein Wortteil („sitz“ + „t“), mal 
 
 Warum nicht einfach jedes Wort? Es gibt unzählige Wörter (Namen, Tippfehler, zusammengesetzte deutsche Wörter wie
 „Donaudampfschifffahrtsgesellschaft“). Mit **Wortteilen** kommt man mit einem Vokabular von einigen Tausend bis
-Zehntausend Einträgen aus und kann trotzdem jedes Wort bilden. Der Tokenizer von Magic LLM lernt diese Teile selbst: Er sucht immer
+Zehntausend Einträgen aus und kann trotzdem jedes Wort bilden. Der Tokenizer von Meridian lernt diese Teile selbst: Er sucht immer
 das häufigste Buchstabenpaar und macht daraus ein neues Token (*Byte-Pair-Encoding*).
 
 #### Schritt 2 – Jedes Token bekommt eine „Bedeutung“ &nbsp;(Ansicht **Embeddings** im Training)
@@ -360,7 +360,7 @@ Wirklich nützliche Antworten brauchen aber ein viel grösseres Modell.
 
 | | Parameter | Trainingsdaten | Trainiert auf |
 |---|---|---|---|
-| **Magic LLM (dieses Projekt)** | ca. 1 Million | ca. 3 Mio. Tokens | Laptop-CPU, 10 Minuten |
+| **Meridian (dieses Projekt)** | ca. 1 Million | ca. 3 Mio. Tokens | Laptop-CPU, 10 Minuten |
 | GPT-2 (2019) | 124 Mio. bis 1.5 Mrd. | ca. 10 Mrd. Tokens | Rechen-Cluster |
 | GPT-3 (2020) | 175 Mrd. | ca. 300 Mrd. Tokens | tausende Grafikkarten, Wochen |
 
@@ -412,7 +412,7 @@ Jedes dauert nur wenige Minuten. Schreib auf, was du beobachtest. Das eignet sic
   Backpropagation und Transformern.
 - **Jay Alammar – „The Illustrated Transformer“** (Blog). Der Klassiker zum Thema Attention mit vielen Bildern.
 - **Original-Paper:** *Attention Is All You Need* (2017), der Ursprung aller heutigen LLMs.
-- **Dieser Code:** [`magicllm/model.py`](magicllm/model.py) ist nur gut 170 Zeilen lang und kommentiert. Das
+- **Dieser Code:** [`meridianlm/model.py`](meridianlm/model.py) ist nur gut 170 Zeilen lang und kommentiert. Das
   ganze „Geheimnis“ steckt in diesen Zeilen.
 
 ## Technische Details (für Fortgeschrittene)
@@ -478,12 +478,12 @@ deutlich besser.
 ## Projektstruktur
 
 ```
-magic-llm/
+meridian/
 ├── app.py                 # Streamlit-App (Einstieg)
 ├── train_cli.py           # Training ohne App
 ├── generate_cli.py        # Text erzeugen ohne App (wie llama-cli)
 ├── bench_cli.py           # Tempo messen und A/B-Tests (wie llama-bench)
-├── magicllm/              # der eigentliche Kern
+├── meridianlm/              # der eigentliche Kern
 │   ├── catalog.py         #   Katalog der 41 Hugging-Face-Datensätze
 │   ├── data.py            #   Daten laden, Tokenizer trainieren, Batches
 │   ├── tokenizer.py       #   BPE-Tokenizer (selbst gebaut)

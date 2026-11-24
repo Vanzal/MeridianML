@@ -1,4 +1,4 @@
-"""Magic LLM – Training ohne App (Kommandozeile).
+"""Meridian – Training ohne App (Kommandozeile).
 
 Beispiel:
     python train_cli.py --datasets tinystories=2000 shakespeare=200 --steps 500 --name test
@@ -8,11 +8,11 @@ from __future__ import annotations
 import argparse
 import time
 
-from magicllm.catalog import BY_KEY
-from magicllm.data import load_selection, prepare, prepared_path, safe_name
-from magicllm.generate import generate_text
-from magicllm.model import GPTConfig
-from magicllm.trainer import TrainConfig, Trainer
+from meridianlm.catalog import BY_KEY
+from meridianlm.data import load_selection, prepare, prepared_path, safe_name
+from meridianlm.generate import generate_text
+from meridianlm.model import GPTConfig
+from meridianlm.trainer import TrainConfig, Trainer
 
 
 def main() -> None:
