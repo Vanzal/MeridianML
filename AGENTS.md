@@ -5,7 +5,7 @@ was als Nächstes kommt.
 
 ## Projekt in einem Satz
 
-**Meridian** (Repo `Vanzal/Meridian`, vorher `Vanzal/MagicAI-Studio`): ein kleines GPT-Sprachmodell, komplett selbst gebaut (BPE-Tokenizer,
+**Meridian** (Repo `Vanzal/MeridianML`, vorher `Vanzal/MagicAI-Studio`): ein kleines GPT-Sprachmodell, komplett selbst gebaut (BPE-Tokenizer,
 Transformer, Training, Sampling) in PyTorch, mit einer Streamlit-App, die jeden Schritt live sichtbar macht, plus
 Kommandozeilen-Tools im Stil von llama.cpp.
 
@@ -33,7 +33,7 @@ Mal in einem Halbsatz erklären. Hat eine **RTX 5080** – GPU-Tests auf seinem 
    loggen oder committen; nur maskiert anzeigen (`hf_auth.mask`).
 7. **Vor jedem Commit:** `python -m pytest -q` muss grün sein. Bei UI-Änderungen die App starten und die
    betroffenen Seiten anschauen (hell **und** dunkel).
-8. Commits gehen direkt auf `main` von `Vanzal/Meridian`, wenn Vanzal es so will – sonst Branch.
+8. Commits gehen direkt auf `main` von `Vanzal/MeridianML`, wenn Vanzal es so will – sonst Branch.
 
 ## Starten
 
