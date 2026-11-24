@@ -5,7 +5,8 @@
 #   Ubuntu/Debian:  sudo apt-get install nsis binutils-mingw-w64-x86-64
 #
 # Was drin ist:
-#   Meridian.exe   kleines Startprogramm (Go, Quelle in launcher/): richtet beim ersten Start Python + PyTorch ein
+#   Meridian.exe   kleines Startprogramm (Go, Quelle in launcher/): eigenes App-Fenster (WebView2), richtet beim
+#                  ersten Start Python + PyTorch ein
 #   uv.exe         Paket- und Python-Manager von Astral (lädt Python und PyTorch beim ersten Start)
 #   app\           der Code von Meridian (ohne Tests und Doku)
 #   wheels\        optional: meridian_fastbpe (Rust-Tokenizer) als Windows-Wheel, falls in build/wheels vorhanden
@@ -36,7 +37,10 @@ done
 echo "» Startprogramm bauen (Meridian.exe)"
 cd "$HERE/launcher"
 x86_64-w64-mingw32-windres --preprocessor=cpp --preprocessor-arg=-xc-header -O coff -i meridian.rc -o rsrc_windows_amd64.syso
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$STAGE/Meridian.exe" .
+# -H windowsgui: Fenster-Programm ohne Konsole (Meridian öffnet sich im eigenen App-Fenster, WebView2).
+# Ohne go.work fehlende go.sum-Einträge (golang.org/x/sys) automatisch ergänzen und gegen sum.golang.org prüfen.
+if [ -z "${GOWORK:-}" ]; then export GOFLAGS="${GOFLAGS:+$GOFLAGS }-mod=mod"; fi
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -H windowsgui" -o "$STAGE/Meridian.exe" .
 cp "$HERE/build-assets/meridian.ico" "$STAGE/meridian.ico"
 
 echo "» uv $UV_VERSION für Windows holen"

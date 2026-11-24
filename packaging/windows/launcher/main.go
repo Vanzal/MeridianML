@@ -1,15 +1,18 @@
 // Meridian.exe – Startprogramm für Windows.
 //
-// Beim ersten Start richtet es alles ein (Python + PyTorch + Pakete, mit uv), danach startet es die App und
-// öffnet sie im Browser. Das Konsolenfenster zeigt, was passiert – wie bei llama.cpp. Fenster schliessen = beenden.
+// Öffnet Meridian in einem eigenen App-Fenster (WebView2, in Windows 10/11 eingebaut – kein Browser nötig).
+// Beim ersten Start richtet es alles ein (Python + PyTorch + Pakete, mit uv) und zeigt den Fortschritt im Fenster.
+// Fenster schliessen = Meridian beenden. Fehlt WebView2, öffnet es Meridian wie früher im Browser.
 //
 // Ordner:
 //
 //	<Installationsordner>\Meridian.exe, uv.exe, app\...   (Programm, wird bei Updates ersetzt)
 //	%LOCALAPPDATA%\Meridian\venv                          (Python-Umgebung, ~3–5 GB mit PyTorch)
 //	%LOCALAPPDATA%\Meridian\data, runs, settings          (deine Daten, Modelle, Einstellungen)
+//	%LOCALAPPDATA%\Meridian\meridian.log                  (Protokoll des letzten Starts)
 //
-// Optionen: --reinstall (Umgebung neu aufbauen), --cpu (PyTorch ohne Grafikkarte), --port N, --no-browser
+// Optionen: --reinstall (Umgebung neu aufbauen), --cpu (PyTorch ohne Grafikkarte), --port N,
+// --browser (im Browser statt im App-Fenster, mit Konsole), --no-browser (nur Server starten, mit Konsole)
 package main
 
 import (
@@ -19,6 +22,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -26,6 +30,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -44,58 +49,90 @@ type paths struct {
 	install, app, uv, home, venv, python, marker string
 }
 
+type options struct {
+	reinstall, cpu, browser, noBrowser bool
+	port                               int
+}
+
+// reporter zeigt den Fortschritt an – in der Konsole oder im App-Fenster.
+type reporter interface {
+	Step(msg string)   // ein neuer Arbeitsschritt
+	Info(msg string)   // Hinweis zum aktuellen Schritt
+	Detail(msg string) // letzte Zeile der Ausgabe von uv/Python (nur im Fenster sichtbar, sonst im Protokoll)
+}
+
+// launcher hält alles, was Einrichten und Starten brauchen.
+type launcher struct {
+	opt    options
+	p      paths
+	ui     reporter
+	log    io.Writer // Protokoll-Datei (+ Konsole im Konsolen-Modus)
+	hidden bool      // Kind-Prozesse ohne eigenes Konsolenfenster starten (App-Fenster-Modus)
+
+	mu    sync.Mutex
+	child *exec.Cmd // gerade laufender Kind-Prozess (uv oder Streamlit), wird beim Schliessen beendet
+}
+
 func main() {
-	reinstall := flag.Bool("reinstall", false, "Python-Umgebung neu aufbauen")
-	cpu := flag.Bool("cpu", false, "PyTorch ohne GPU installieren")
-	port := flag.Int("port", 8501, "bevorzugter Port")
-	noBrowser := flag.Bool("no-browser", false, "Browser nicht automatisch öffnen")
+	var opt options
+	flag.BoolVar(&opt.reinstall, "reinstall", false, "Python-Umgebung neu aufbauen")
+	flag.BoolVar(&opt.cpu, "cpu", false, "PyTorch ohne GPU installieren")
+	flag.IntVar(&opt.port, "port", 8501, "bevorzugter Port")
+	flag.BoolVar(&opt.browser, "browser", false, "im Browser statt im App-Fenster öffnen")
+	flag.BoolVar(&opt.noBrowser, "no-browser", false, "nur den Server starten (Konsole)")
 	flag.Parse()
 
+	home := homeDir()
+	_ = os.MkdirAll(home, 0o755)
+	logFile, _ := os.Create(filepath.Join(home, "meridian.log"))
+	if logFile != nil {
+		defer logFile.Close()
+	}
+
+	if !opt.browser && !opt.noBrowser && runWindowed(opt, home, logFile) {
+		return
+	}
+	attachConsole()
+	runConsole(opt, logFile)
+}
+
+// ---------------------------------------------------------------------------------------------- Konsolen-Modus
+
+type consoleUI struct{ log io.Writer }
+
+func (c consoleUI) Step(msg string)   { fmt.Printf("  » %s\n", msg); fmt.Fprintf(c.log, "» %s\n", msg) }
+func (c consoleUI) Info(msg string)   { fmt.Printf("    %s\n", msg); fmt.Fprintf(c.log, "  %s\n", msg) }
+func (c consoleUI) Detail(msg string) {}
+
+// runConsole ist der alte Ablauf: Konsole zeigt alles, die App öffnet sich im Browser.
+func runConsole(opt options, logFile *os.File) {
+	var logw io.Writer = io.Discard
+	if logFile != nil {
+		logw = logFile
+	}
 	banner()
-	p, err := findPaths()
+	l := &launcher{opt: opt, ui: consoleUI{logw}, log: io.MultiWriter(os.Stdout, logw)}
+	if err := l.prepare(); err != nil {
+		fail(err)
+	}
+	cmd, url, err := l.startServer()
 	if err != nil {
 		fail(err)
 	}
-	for _, d := range []string{"data", "runs", "settings"} {
-		_ = os.MkdirAll(filepath.Join(p.home, d), 0o755)
-	}
-
-	want := setupFingerprint(p, *cpu)
-	if *reinstall || readFile(p.marker) != want || !exists(p.python) {
-		if err := setup(p, *cpu); err != nil {
-			fail(err)
-		}
-		_ = os.WriteFile(p.marker, []byte(want), 0o644)
-	}
-
-	free := freePort(*port)
-	url := fmt.Sprintf("http://localhost:%d", free)
-	cmd := exec.Command(p.python, "-m", "streamlit", "run", filepath.Join(p.app, "app.py"),
-		"--server.port", fmt.Sprint(free), "--server.address", "localhost", "--server.headless", "true",
-		"--browser.gatherUsageStats", "false")
-	cmd.Dir = p.app // .streamlit\config.toml (Theme) liegt dort
-	cmd.Env = append(os.Environ(),
-		"MERIDIAN_DATA_DIR="+filepath.Join(p.home, "data"),
-		"MERIDIAN_RUNS_DIR="+filepath.Join(p.home, "runs"),
-		"MERIDIAN_SETTINGS_DIR="+filepath.Join(p.home, "settings"),
-		"PYTHONUTF8=1", "HF_HUB_DISABLE_SYMLINKS_WARNING=1",
-	)
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	step("Starte Meridian …")
-	if err := cmd.Start(); err != nil {
-		fail(fmt.Errorf("App konnte nicht gestartet werden: %w", err))
-	}
+	exited := make(chan struct{})
 	go func() {
-		if waitHealthy(free, 3*time.Minute) {
+		if waitHealthy(exited, url, 3*time.Minute) {
 			fmt.Printf("\n  Meridian läuft:  %s\n  Dieses Fenster offen lassen. Schliessen = Meridian beenden.\n\n", url)
-			if !*noBrowser {
+			if !opt.noBrowser {
 				openBrowser(url)
 			}
 		} else {
 			fmt.Println("\n  Die App antwortet nicht. Siehe Meldungen oben.")
 		}
 	}()
-	if err := cmd.Wait(); err != nil {
+	err = cmd.Wait()
+	close(exited)
+	if err != nil {
 		fail(fmt.Errorf("Meridian wurde mit einem Fehler beendet: %w", err))
 	}
 }
@@ -107,10 +144,6 @@ func banner() {
 	fmt.Println()
 }
 
-func step(msg string)      { fmt.Printf("  » %s\n", msg) }
-func info(msg string)      { fmt.Printf("    %s\n", msg) }
-func exists(p string) bool { _, err := os.Stat(p); return err == nil }
-
 func fail(err error) {
 	fmt.Printf("\n  FEHLER: %v\n\n  Tipp: Meridian mit --reinstall starten, um die Umgebung neu aufzubauen.\n", err)
 	fmt.Print("  Enter drücken zum Schliessen …")
@@ -118,12 +151,89 @@ func fail(err error) {
 	os.Exit(1)
 }
 
+// ---------------------------------------------------------------------------------------------- Einrichten + Starten
+
+// prepare sucht die Programmteile und richtet bei Bedarf Python + PyTorch ein.
+func (l *launcher) prepare() error {
+	p, err := findPaths()
+	if err != nil {
+		return err
+	}
+	l.p = p
+	for _, d := range []string{"data", "runs", "settings"} {
+		_ = os.MkdirAll(filepath.Join(p.home, d), 0o755)
+	}
+	want := setupFingerprint(p, l.opt.cpu)
+	if l.opt.reinstall || readFile(p.marker) != want || !exists(p.python) {
+		_ = os.Remove(p.marker)
+		if err := l.setup(); err != nil {
+			return err
+		}
+		_ = os.WriteFile(p.marker, []byte(want), 0o644)
+	}
+	return nil
+}
+
+// startServer startet Streamlit auf einem freien Port und liefert den Prozess und die Adresse.
+func (l *launcher) startServer() (*exec.Cmd, string, error) {
+	p := l.p
+	free := freePort(l.opt.port)
+	url := fmt.Sprintf("http://localhost:%d", free)
+	cmd := exec.Command(p.python, "-m", "streamlit", "run", filepath.Join(p.app, "app.py"),
+		"--server.port", fmt.Sprint(free), "--server.address", "localhost", "--server.headless", "true",
+		"--browser.gatherUsageStats", "false")
+	cmd.Dir = p.app // .streamlit\config.toml (Theme) liegt dort
+	cmd.Env = append(os.Environ(),
+		"MERIDIAN_DATA_DIR="+filepath.Join(p.home, "data"),
+		"MERIDIAN_RUNS_DIR="+filepath.Join(p.home, "runs"),
+		"MERIDIAN_SETTINGS_DIR="+filepath.Join(p.home, "settings"),
+		"PYTHONUTF8=1", "HF_HUB_DISABLE_SYMLINKS_WARNING=1",
+	)
+	cmd.Stdout, cmd.Stderr = l.log, l.log
+	if l.hidden {
+		hideWindow(cmd)
+	}
+	l.ui.Step("Starte Meridian …")
+	if err := cmd.Start(); err != nil {
+		return nil, "", fmt.Errorf("App konnte nicht gestartet werden: %w", err)
+	}
+	l.setChild(cmd)
+	return cmd, url, nil
+}
+
+func (l *launcher) setChild(c *exec.Cmd) {
+	l.mu.Lock()
+	l.child = c
+	l.mu.Unlock()
+}
+
+// stop beendet den laufenden Kind-Prozess samt Unterprozessen (beim Schliessen des Fensters).
+func (l *launcher) stop() {
+	l.mu.Lock()
+	c := l.child
+	l.mu.Unlock()
+	if c != nil && c.Process != nil {
+		killTree(c)
+	}
+}
+
+func exists(p string) bool { _, err := os.Stat(p); return err == nil }
+
 func readFile(p string) string {
 	b, err := os.ReadFile(p)
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(b))
+}
+
+// homeDir: %LOCALAPPDATA%\Meridian – Python-Umgebung, Daten, Einstellungen, Protokoll.
+func homeDir() string {
+	base := os.Getenv("LOCALAPPDATA")
+	if base == "" {
+		base, _ = os.UserConfigDir()
+	}
+	return filepath.Join(base, "Meridian")
 }
 
 func findPaths() (paths, error) {
@@ -150,11 +260,7 @@ func findPaths() (paths, error) {
 			return paths{}, fmt.Errorf("uv nicht gefunden (%s)", uv)
 		}
 	}
-	base := os.Getenv("LOCALAPPDATA")
-	if base == "" {
-		base, _ = os.UserConfigDir()
-	}
-	home := filepath.Join(base, "Meridian")
+	home := homeDir()
 	venv := filepath.Join(home, "venv")
 	python := filepath.Join(venv, "Scripts", "python.exe")
 	if runtime.GOOS != "windows" {
@@ -182,63 +288,105 @@ func bundledWheels(p paths) []string {
 	return found
 }
 
-func run(p paths, args ...string) error {
-	cmd := exec.Command(p.uv, args...)
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	cmd.Env = append(os.Environ(), "UV_PYTHON_PREFERENCE=only-managed", "UV_LINK_MODE=copy")
-	return cmd.Run()
+// run führt uv aus. Die Ausgabe geht ins Protokoll; die letzte Zeile erscheint im Fenster (Detail).
+func (l *launcher) run(args ...string) error {
+	cmd := exec.Command(l.p.uv, args...)
+	lw := &lineWriter{emit: l.ui.Detail}
+	cmd.Stdout = io.MultiWriter(l.log, lw)
+	cmd.Stderr = io.MultiWriter(l.log, lw)
+	cmd.Env = append(os.Environ(), "UV_PYTHON_PREFERENCE=only-managed", "UV_LINK_MODE=copy", "NO_COLOR=1")
+	if l.hidden {
+		hideWindow(cmd)
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	l.setChild(cmd)
+	defer l.setChild(nil)
+	return cmd.Wait()
 }
 
-func hasNvidiaGPU() bool {
-	out, err := exec.Command("nvidia-smi", "-L").Output()
+func (l *launcher) output(name string, args ...string) ([]byte, error) {
+	cmd := exec.Command(name, args...)
+	if l.hidden {
+		hideWindow(cmd)
+	}
+	return cmd.Output()
+}
+
+func (l *launcher) hasNvidiaGPU() bool {
+	out, err := l.output("nvidia-smi", "-L")
 	return err == nil && strings.Contains(string(out), "GPU")
 }
 
-func setup(p paths, cpu bool) error {
-	step("Erster Start: Meridian wird eingerichtet (einmalig, 5–15 Minuten, ~3 GB Download).")
+func (l *launcher) setup() error {
+	p, ui := l.p, l.ui
+	ui.Step("Erster Start: Meridian wird eingerichtet (einmalig, 5–15 Minuten, ~3 GB Download).")
 	_ = os.RemoveAll(p.venv)
-	step("Python " + pythonVersion + " und eigene Umgebung anlegen …")
-	if err := run(p, "venv", "--python", pythonVersion, p.venv); err != nil {
+	ui.Step("Python " + pythonVersion + " und eigene Umgebung anlegen …")
+	if err := l.run("venv", "--python", pythonVersion, p.venv); err != nil {
 		return fmt.Errorf("Python-Umgebung konnte nicht angelegt werden: %w", err)
 	}
 	installed := false
-	if !cpu && hasNvidiaGPU() {
+	if !l.opt.cpu && l.hasNvidiaGPU() {
 		for _, idx := range cudaIndexes {
-			step("PyTorch mit GPU-Unterstützung installieren (" + idx[strings.LastIndex(idx, "/")+1:] + ") …")
-			if err := run(p, "pip", "install", "--python", p.python, "torch", "--index-url", idx); err == nil {
+			ui.Step("PyTorch mit GPU-Unterstützung installieren (" + idx[strings.LastIndex(idx, "/")+1:] + ") …")
+			if err := l.run("pip", "install", "--python", p.python, "torch", "--index-url", idx); err == nil {
 				installed = true
 				break
 			}
-			info("Hat nicht geklappt – nächste Variante.")
+			ui.Info("Hat nicht geklappt – nächste Variante.")
 		}
-	} else if !cpu {
-		info("Keine NVIDIA-Grafikkarte gefunden – PyTorch läuft auf der CPU.")
+	} else if !l.opt.cpu {
+		ui.Info("Keine NVIDIA-Grafikkarte gefunden – PyTorch läuft auf der CPU.")
 	}
 	if !installed {
-		step("PyTorch (CPU) installieren …")
-		if err := run(p, "pip", "install", "--python", p.python, "torch"); err != nil {
+		ui.Step("PyTorch (CPU) installieren …")
+		if err := l.run("pip", "install", "--python", p.python, "torch"); err != nil {
 			return fmt.Errorf("PyTorch konnte nicht installiert werden: %w", err)
 		}
 	}
-	step("Restliche Pakete installieren …")
-	if err := run(p, "pip", "install", "--python", p.python, "-r", filepath.Join(p.app, "requirements.txt")); err != nil {
+	ui.Step("Restliche Pakete installieren …")
+	if err := l.run("pip", "install", "--python", p.python, "-r", filepath.Join(p.app, "requirements.txt")); err != nil {
 		return fmt.Errorf("Pakete konnten nicht installiert werden: %w", err)
 	}
 	// Optional: schneller Tokenizer-Kern in Rust (rust/meridian_fastbpe). Ohne ihn läuft alles in Python.
 	if wheels := bundledWheels(p); len(wheels) > 0 {
-		step("Schnellen Tokenizer (Rust) installieren …")
+		ui.Step("Schnellen Tokenizer (Rust) installieren …")
 		args := append([]string{"pip", "install", "--python", p.python, "--force-reinstall", "--no-deps"}, wheels...)
-		if err := run(p, args...); err != nil {
-			info("Hat nicht geklappt – Meridian benutzt den (langsameren) Python-Tokenizer.")
+		if err := l.run(args...); err != nil {
+			ui.Info("Hat nicht geklappt – Meridian benutzt den (langsameren) Python-Tokenizer.")
 		}
 	}
-	out, err := exec.Command(p.python, "-c",
-		"import torch; print('GPU: ' + torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')").Output()
+	out, err := l.output(p.python, "-c",
+		"import torch; print('GPU: ' + torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')")
 	if err != nil {
 		return errors.New("PyTorch lässt sich nicht laden")
 	}
-	step("Fertig eingerichtet. Rechnet auf: " + strings.TrimSpace(string(out)))
+	ui.Step("Fertig eingerichtet. Rechnet auf: " + strings.TrimSpace(string(out)))
 	return nil
+}
+
+// lineWriter gibt jede vollständige Ausgabezeile (getrennt durch \n oder \r) an emit weiter.
+type lineWriter struct {
+	buf  []byte
+	emit func(string)
+}
+
+func (w *lineWriter) Write(b []byte) (int, error) {
+	for _, c := range b {
+		if c == '\n' || c == '\r' {
+			if line := strings.TrimSpace(string(w.buf)); line != "" && w.emit != nil {
+				w.emit(line)
+			}
+			w.buf = w.buf[:0]
+			continue
+		}
+		if len(w.buf) < 4096 {
+			w.buf = append(w.buf, c)
+		}
+	}
+	return len(b), nil
 }
 
 func freePort(start int) int {
@@ -252,18 +400,24 @@ func freePort(start int) int {
 	return start
 }
 
-func waitHealthy(port int, timeout time.Duration) bool {
+// waitHealthy wartet, bis Streamlit antwortet. Bricht sofort ab, wenn “exited“ geschlossen wird (Prozess beendet).
+func waitHealthy(exited <-chan struct{}, url string, timeout time.Duration) bool {
 	client := http.Client{Timeout: 2 * time.Second}
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		resp, err := client.Get(fmt.Sprintf("http://localhost:%d/_stcore/health", port))
+		select {
+		case <-exited:
+			return false
+		default:
+		}
+		resp, err := client.Get(url + "/_stcore/health")
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == 200 {
 				return true
 			}
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(400 * time.Millisecond)
 	}
 	return false
 }

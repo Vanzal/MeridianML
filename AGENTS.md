@@ -74,7 +74,7 @@ Version steht nur in `meridianlm/__init__.py` (Launcher: `version` in `main.go`,
 | `assets/` | finales Logo (Marke, Logo hell/dunkel, App-Icon); Wortmarke als Pfade (Inter Display SemiBold, OFL) |
 | `tests/test_core.py`, `tests/test_meridian.py` | Tests |
 | `rust/meridian_fastbpe/` | Rust-Kern (PyO3, abi3) für BPE-Training + Encoding; `tokenizer.py` nutzt ihn, wenn installiert (`backend()`), sonst Python. `MERIDIAN_PURE_PYTHON=1` erzwingt Python. Muss **bit-genau** gleich bleiben: `tests/test_meridian.py` (Rust = Python) + `tools/check_tokenizer_equal.py <korpus>` |
-| `packaging/windows/` | Windows-Installer: `launcher/` (Go, `Meridian.exe`: richtet beim ersten Start mit uv Python 3.12 + PyTorch ein, CUDA 13.0 → 12.8 → CPU, startet Streamlit, öffnet Browser), `meridian.nsi` (NSIS, ohne Admin, nach `%LOCALAPPDATA%\Programs\Meridian`), `build.sh` |
+| `packaging/windows/` | Windows-Installer: `launcher/` (Go, `Meridian.exe`, Fenster-Programm `-H windowsgui`: eigenes App-Fenster über WebView2 (`github.com/jchv/go-webview2`, reines Go), Ladebildschirm mit Fortschritt (`loading.go`), richtet beim ersten Start mit uv Python 3.12 + PyTorch ein, CUDA 13.0 → 12.8 → CPU, startet Streamlit ohne Konsolenfenster und zeigt es im Fenster; Fenster zu = alles beenden; Protokoll `%LOCALAPPDATA%\Meridian\meridian.log`; ohne WebView2 oder mit `--browser` alter Konsolen-+-Browser-Modus), `meridian.nsi` (NSIS, ohne Admin, nach `%LOCALAPPDATA%\Programs\Meridian`), `build.sh` |
 
 Gut zu wissen:
 - Die App liest das Theme bei jedem Lauf aus `settings/theme.json`; `apply_to_streamlit` ändert Streamlits
@@ -97,6 +97,9 @@ Gut zu wissen:
 
 - Rust-Tokenizer: Training ≈ 3,6× schneller, identische Ausgabe; Fehler „_ geht verloren“ im Regex behoben.
 - Windows-Installer + Startprogramm (gebaut und auf Linux getestet; auf echtem Windows noch **nicht** getestet).
+- Eigenes App-Fenster statt Browser (WebView2). Auf echtem Windows noch **nicht** getestet. Lokal bauen ohne
+  Internet-Zugang zu golang.org: `go.work` mit `replace golang.org/x/sys => <Kopie von github.com/golang/sys>`;
+  CI ergänzt go.sum mit `GOFLAGS=-mod=mod`.
 - Prüfung der Modell-Einstellungen, Checkpoint-Format-Version, Prüfung beim Laden (Format, Konfiguration,
   Gewichte, Tokenizer-Vokabular). Alte Checkpoints (ohne `format`) laden weiterhin.
 - **MoE:** `n_experts` (0 = aus, 2–64), `top_k_experts`, `moe_aux_weight` (Balance-Loss, Switch-Formel, 1.0 =

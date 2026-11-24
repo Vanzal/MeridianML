@@ -115,11 +115,14 @@ Die App führt mit sechs Seiten durch den ganzen Weg von den Rohdaten bis zum fe
 2. **Meridian** im Startmenü (oder auf dem Desktop) öffnen. Beim **ersten Start** richtet sich Meridian selbst ein:
    Python und PyTorch werden heruntergeladen (etwa 3 GB, 5–15 Minuten). Mit einer NVIDIA-Grafikkarte wird
    automatisch die GPU-Version installiert (CUDA 13.0, sonst 12.8, sonst CPU).
-3. Danach öffnet sich die App im Browser. Das schwarze Konsolenfenster zeigt, was passiert – offen lassen;
-   schliessen beendet Meridian.
+   Den Fortschritt siehst du direkt im Meridian-Fenster.
+3. Danach erscheint die App im **eigenen Fenster** – kein Browser, kein Konsolenfenster. Fenster schliessen
+   beendet Meridian. Dafür nutzt Meridian WebView2, das in Windows 10 und 11 eingebaut ist; fehlt es, öffnet sich
+   Meridian wie früher im Browser. Mit `Meridian.exe --browser` geht das auch absichtlich.
 
 Deine Daten (Modelle, Datensätze, Einstellungen) liegen in `%LOCALAPPDATA%\Meridian` und bleiben bei Updates
 erhalten. Startmenü-Eintrag **„Meridian neu einrichten“** baut die Python-Umgebung neu auf, falls etwas klemmt.
+Das Protokoll des letzten Starts liegt in `%LOCALAPPDATA%\Meridian\meridian.log`.
 Den Installer selbst bauen: `packaging/windows/build.sh` (Linux, braucht Go, NSIS und mingw-windres).
 
 ## Schnellstart

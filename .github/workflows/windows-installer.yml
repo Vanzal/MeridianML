@@ -64,6 +64,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y nsis binutils-mingw-w64-x86-64
       - name: Launcher prüfen
         working-directory: packaging/windows/launcher
+        env:
+          GOFLAGS: -mod=mod   # fehlende go.sum-Einträge ergänzen (geprüft gegen sum.golang.org)
         run: go vet ./... && GOOS=windows GOARCH=amd64 go vet ./... && go test ./...
       - name: Installer bauen
         run: packaging/windows/build.sh
