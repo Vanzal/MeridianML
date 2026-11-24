@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import heapq
 import json
+import os
 import re
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -15,8 +16,24 @@ from typing import Callable, Iterable
 
 EOT = "<|endoftext|>"
 
+# Optionaler Rust-Kern (rust/meridian_fastbpe): gleiche Ergebnisse, viel schneller. Fehlt er, läuft alles in Python.
+# MERIDIAN_PURE_PYTHON=1 erzwingt die Python-Version (für Vergleiche und Tests).
+try:
+    if os.environ.get("MERIDIAN_PURE_PYTHON"):
+        raise ImportError
+    import meridian_fastbpe as _fast
+except ImportError:          # pragma: no cover - hängt von der Installation ab
+    _fast = None
+
+
+def backend() -> str:
+    """Welcher Tokenizer-Kern aktiv ist: 'rust' oder 'python'."""
+    return "rust" if _fast is not None else "python"
+
 # Vor-Zerlegung in "Wörter" (ähnlich wie GPT-2): Merges passieren nie über Wortgrenzen hinweg.
-_PRETOKEN = re.compile(r"""'(?:s|t|re|ve|m|ll|d)| ?[^\W\d_]+| ?\d+| ?[^\s\w]+|\s+(?!\S)|\s+""")
+# Jedes Zeichen landet in genau einer Gruppe – Buchstaben, Ziffern, Sonstiges (Satzzeichen, Symbole, „_“) oder
+# Leerraum –, damit decode(encode(text)) == text gilt. (Früher fiel „_“ durch alle Gruppen und ging verloren.)
+_PRETOKEN = re.compile(r"""'(?:s|t|re|ve|m|ll|d)| ?[^\W\d_]+| ?\d+| ?(?:[^\s\w]|_)+|\s+(?!\S)|\s+""")
 
 
 class BPETokenizer:
@@ -33,6 +50,7 @@ class BPETokenizer:
         self.rank: dict[tuple[int, int], int] = {p: i for i, p in enumerate(self.merges)}
         self.eot_id: int = len(self.vocab)
         self._cache: dict[str, list[int]] = {}
+        self._fast_enc = _fast.Encoder(self.merges) if _fast is not None else None
 
     @property
     def vocab_size(self) -> int:
@@ -47,6 +65,8 @@ class BPETokenizer:
         for t in texts:
             word_counts.update(_PRETOKEN.findall(t))
 
+        if _fast is not None:
+            return cls._train_fast(word_counts, n_merges, progress)
         words: list[list[int]] = [list(w.encode("utf-8")) for w in word_counts]
         freqs: list[int] = list(word_counts.values())
 
@@ -113,11 +133,26 @@ class BPETokenizer:
         tok.merge_counts = merge_counts
         return tok
 
+    @classmethod
+    def _train_fast(cls, word_counts: Counter, n_merges: int,
+                    progress: Callable[[int, int, bytes], None] | None) -> "BPETokenizer":
+        """Gleicher Algorithmus wie oben, im Rust-Kern."""
+        merges, counts = _fast.train([w.encode("utf-8") for w in word_counts], list(word_counts.values()),
+                                     n_merges, progress)
+        tok = cls([tuple(m) for m in merges])
+        tok.merge_counts = list(counts)
+        return tok
+
     # ---------------------------------------------------------------- Encoding
     def _encode_word(self, word: str) -> list[int]:
         hit = self._cache.get(word)
         if hit is not None:
             return hit
+        if self._fast_enc is not None:        # neues Wort: im Rust-Kern zerlegen, Ergebnis hier merken
+            ids = self._fast_enc.encode_one(word)
+            if len(self._cache) < 500_000:
+                self._cache[word] = ids
+            return ids
         ids = list(word.encode("utf-8"))
         rank = self.rank
         while len(ids) > 1:

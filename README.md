@@ -59,6 +59,7 @@ Verwendet wird nur **PyTorch** (für Tensoren und automatische Ableitung), **`da
 | **KV-Cache** | Beim Erzeugen wird pro Token nur noch das neue Token gerechnet: **≈ 3× schneller** (≈ 430 → 1'317 tok/s auf der Test-Maschine), Ausgabe nachweislich identisch. Protokoll aller Experimente: [`docs/perf/PLAN.md`](docs/perf/PLAN.md) |
 | **Heller Modus** | Schalter in der Seitenleiste |
 | **Eigene Themes** | Unter **Einstellungen → Design**: Vorlagen Dunkel, Hell, Terminal; jede Farbe per Farbwähler änderbar, Live-Vorschau, Kontrast-Prüfung, als eigenes Theme speichern, exportieren und importieren (.json) |
+| **Tokenizer in Rust** | Optionaler Rust-Kern [`rust/meridian_fastbpe`](rust/meridian_fastbpe): Tokenizer-Training **≈ 3,6× schneller**, Encoding neuer Texte ≈ 1,3×, Ergebnis bit-genau gleich wie in Python (getestet). Fehlt er, läuft alles in Python. Dabei gefunden und behoben: Unterstriche („_“) gingen beim Encoding verloren – wichtig für Code-Datensätze. Details: [`docs/perf/PLAN.md`](docs/perf/PLAN.md) |
 | **Hugging-Face-Token** | Unter **Einstellungen → Hugging Face**: Token mit Leserechten eintragen (für gesperrte Datensätze). Wird geprüft (wem gehört er, nur lesen?), nur lokal gespeichert (`settings/hf_token`, Rechte 600, nicht in Git) und nie vollständig angezeigt |
 
 <table>
@@ -129,6 +130,13 @@ git clone <URL dieses Repos> meridian
 cd meridian
 pip install -r requirements.txt
 streamlit run app.py
+```
+
+Optional, schnellerer Tokenizer (braucht [Rust](https://rustup.rs)):
+
+```bash
+pip install maturin
+maturin build --release -m rust/meridian_fastbpe/Cargo.toml -o wheels && pip install wheels/*.whl
 ```
 
 Dann im Browser (öffnet sich automatisch):
@@ -498,6 +506,7 @@ meridian/
 ├── train_cli.py           # Training ohne App
 ├── generate_cli.py        # Text erzeugen ohne App (wie llama-cli)
 ├── packaging/windows/     # Windows-Installer: Startprogramm (Go), NSIS-Skript, build.sh
+├── rust/meridian_fastbpe/ # optionaler Rust-Kern für den Tokenizer (PyO3)
 ├── bench_cli.py           # Tempo messen und A/B-Tests (wie llama-bench)
 ├── meridianlm/              # der eigentliche Kern
 │   ├── catalog.py         #   Katalog der 41 Hugging-Face-Datensätze

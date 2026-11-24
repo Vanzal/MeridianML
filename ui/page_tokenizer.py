@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from meridianlm.data import prepared_path
-from meridianlm.tokenizer import BPETokenizer
+from meridianlm.tokenizer import BPETokenizer, backend
 from ui.common import PALETTE, fmt_int, hero, need_data, style_fig, token_chips
 
 
@@ -31,6 +31,8 @@ def _vocab_experiment(sample: str, sizes: tuple[int, ...]) -> list[dict]:
 def render() -> None:
     hero("Tokenizer & Daten", "Bevor das Modell lernt, wird jeder Text in Tokens zerlegt. Hier siehst du, wie das aussieht.",
          crumb="tokenizer")
+    st.markdown('<div class="ml-stats">kern <b>' + ("rust (schnell)" if backend() == "rust" else "python") + '</b></div>',
+                unsafe_allow_html=True)
     meta = need_data()
     d = prepared_path(meta["name"])
     tok = _load_tok(str(d / "tokenizer.json"), (d / "tokenizer.json").stat().st_mtime)

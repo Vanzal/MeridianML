@@ -163,11 +163,23 @@ func findPaths() (paths, error) {
 	return paths{install, app, uv, home, venv, python, filepath.Join(home, "setup-ok.txt")}, nil
 }
 
-// Ändern sich requirements.txt oder die Wahl CPU/GPU, wird die Einrichtung wiederholt.
+// Ändern sich requirements.txt, die mitgelieferten Wheels oder die Wahl CPU/GPU, wird die Einrichtung wiederholt.
 func setupFingerprint(p paths, cpu bool) string {
 	req, _ := os.ReadFile(filepath.Join(p.app, "requirements.txt"))
-	h := sha256.Sum256(append(req, []byte(fmt.Sprint(version, cpu, cudaIndexes))...))
+	extra := fmt.Sprint(version, cpu, cudaIndexes)
+	for _, w := range bundledWheels(p) {
+		if st, err := os.Stat(w); err == nil {
+			extra += fmt.Sprintf("|%s:%d", filepath.Base(w), st.Size())
+		}
+	}
+	h := sha256.Sum256(append(req, []byte(extra)...))
 	return hex.EncodeToString(h[:])
+}
+
+// Mitgelieferte Python-Pakete (z. B. der Rust-Tokenizer) im Ordner <Installation>\wheels.
+func bundledWheels(p paths) []string {
+	found, _ := filepath.Glob(filepath.Join(p.install, "wheels", "*.whl"))
+	return found
 }
 
 func run(p paths, args ...string) error {
@@ -211,6 +223,14 @@ func setup(p paths, cpu bool) error {
 	step("Restliche Pakete installieren …")
 	if err := run(p, "pip", "install", "--python", p.python, "-r", filepath.Join(p.app, "requirements.txt")); err != nil {
 		return fmt.Errorf("Pakete konnten nicht installiert werden: %w", err)
+	}
+	// Optional: schneller Tokenizer-Kern in Rust (rust/meridian_fastbpe). Ohne ihn läuft alles in Python.
+	if wheels := bundledWheels(p); len(wheels) > 0 {
+		step("Schnellen Tokenizer (Rust) installieren …")
+		args := append([]string{"pip", "install", "--python", p.python, "--force-reinstall", "--no-deps"}, wheels...)
+		if err := run(p, args...); err != nil {
+			info("Hat nicht geklappt – Meridian benutzt den (langsameren) Python-Tokenizer.")
+		}
 	}
 	out, err := exec.Command(p.python, "-c",
 		"import torch; print('GPU: ' + torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')").Output()

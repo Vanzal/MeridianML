@@ -16,6 +16,22 @@ jobs:
       - name: Install (CPU-only PyTorch)
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements.txt
-      - name: Run tests
+          pip install -r requirements.txt maturin
+      - name: Tests (reines Python)
+        run: MERIDIAN_PURE_PYTHON=1 python -m pytest -q
+      - name: Rust-Tokenizer bauen
+        run: |
+          maturin build --release -m rust/meridian_fastbpe/Cargo.toml -o wheels
+          pip install wheels/*.whl
+      - name: Tests (mit Rust-Tokenizer, inkl. Gleichheit Rust = Python)
         run: python -m pytest -q
+  launcher:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Launcher prüfen und testen
+        working-directory: packaging/windows/launcher
+        run: go vet ./... && GOOS=windows GOARCH=amd64 go vet ./... && go test ./...

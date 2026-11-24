@@ -1,0 +1,48 @@
+{
+ "control_a": {
+  "train4096_s": 6.379,
+  "train16384_s": 10.749,
+  "encode_cold_s": 1.626,
+  "encode_warm_s": 1.33
+ },
+ "candidate": {
+  "train4096_s": 1.699,
+  "train16384_s": 3.025,
+  "encode_cold_s": 1.348,
+  "encode_warm_s": 1.359
+ },
+ "control_b": {
+  "train4096_s": 7.446,
+  "train16384_s": 11.006,
+  "encode_cold_s": 1.557,
+  "encode_warm_s": 1.174
+ },
+ "summary": {
+  "train4096_s": {
+   "python_median_s": 6.912,
+   "rust_median_s": 1.699,
+   "speedup_vs_better_control": 3.75,
+   "beats_both": true
+  },
+  "train16384_s": {
+   "python_median_s": 10.878,
+   "rust_median_s": 3.025,
+   "speedup_vs_better_control": 3.55,
+   "beats_both": true
+  },
+  "encode_cold_s": {
+   "python_median_s": 1.591,
+   "rust_median_s": 1.348,
+   "speedup_vs_better_control": 1.16,
+   "beats_both": true
+  },
+  "encode_warm_s": {
+   "python_median_s": 1.252,
+   "rust_median_s": 1.359,
+   "speedup_vs_better_control": 0.86,
+   "beats_both": false
+  }
+ },
+ "corpus": "16 MB mixed (Python stdlib code + license prose + German README), 1203 docs",
+ "machine": "2-core cloud VM, Python 3.13"
+}

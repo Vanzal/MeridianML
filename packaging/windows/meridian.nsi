@@ -58,6 +58,11 @@ Section "Meridian" SecMain
   File "${STAGE}\THIRD-PARTY-NOTICES.txt"
   SetOutPath "$INSTDIR\app"
   File /r "${STAGE}\app\*.*"
+  RMDir /r "$INSTDIR\wheels"
+!ifdef HAVE_WHEELS
+  SetOutPath "$INSTDIR\wheels"
+  File "${STAGE}\wheels\*.whl"
+!endif
   SetOutPath "$INSTDIR"
 
   CreateDirectory "$SMPROGRAMS\Meridian"
@@ -81,6 +86,7 @@ Section "Uninstall"
   Delete "$DESKTOP\Meridian.lnk"
   RMDir /r "$SMPROGRAMS\Meridian"
   RMDir /r "$INSTDIR\app"
+  RMDir /r "$INSTDIR\wheels"
   Delete "$INSTDIR\Meridian.exe"
   Delete "$INSTDIR\uv.exe"
   Delete "$INSTDIR\meridian.ico"

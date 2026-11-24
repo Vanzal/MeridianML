@@ -10,3 +10,4 @@ runs/
 settings/
 build/
 dist/
+rust/**/target/

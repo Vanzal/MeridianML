@@ -1,6 +1,7 @@
 name: windows-installer
 
-# Baut dist/Meridian-Setup-<version>.exe. Bei einem Tag wie v2.1.0 wird der Installer an ein GitHub-Release gehängt.
+# Baut dist/Meridian-Setup-<version>.exe mit dem Rust-Tokenizer. Bei einem Tag wie v2.1.0 wird der Installer an
+# ein GitHub-Release gehängt; sonst liegt er unter "Artifacts" des Laufs (Actions -> windows-installer -> Run workflow).
 on:
   push:
     tags: ["v*"]
@@ -10,7 +11,42 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  wheel-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Rust-Tokenizer für Windows bauen
+        run: |
+          pip install "maturin>=1.7,<2"
+          maturin build --release -m rust/meridian_fastbpe/Cargo.toml -o build/wheels
+      - name: Wheel prüfen (Rust = Python, verlustfrei)
+        shell: bash
+        run: |
+          pip install build/wheels/*.whl
+          python - <<'PY'
+          import meridianlm.tokenizer as T
+          from meridianlm.tokenizer import BPETokenizer
+          assert T.backend() == "rust"
+          docs = ["Grüezi mitenand! snake_case_name = 42  # Kommentar 😀 漢字\n" * 20, "def f(x_1):\n    return x_1\n" * 30]
+          fast = T._fast
+          T._fast = None; py = BPETokenizer.train(docs, 400)
+          T._fast = fast; rs = BPETokenizer.train(docs, 400)
+          assert py.merges == rs.merges and py.merge_counts == rs.merge_counts
+          text = "\n".join(docs)
+          assert rs.encode(text) == BPETokenizer(py.merges).encode(text)
+          assert rs.decode(rs.encode(text)) == text
+          print("Windows-Wheel ok:", len(rs.merges), "Merges")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fastbpe-wheel
+          path: build/wheels/*.whl
+
+  installer:
+    needs: wheel-windows
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,11 +56,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: fastbpe-wheel
+          path: build/wheels
       - name: Werkzeuge installieren (NSIS, windres)
         run: sudo apt-get update && sudo apt-get install -y nsis binutils-mingw-w64-x86-64
       - name: Launcher prüfen
         working-directory: packaging/windows/launcher
-        run: go vet ./... && GOOS=windows GOARCH=amd64 go vet ./...
+        run: go vet ./... && GOOS=windows GOARCH=amd64 go vet ./... && go test ./...
       - name: Installer bauen
         run: packaging/windows/build.sh
       - uses: actions/upload-artifact@v4

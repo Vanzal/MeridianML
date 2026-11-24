@@ -73,6 +73,7 @@ Version steht nur in `meridianlm/__init__.py` (Launcher: `version` in `main.go`,
 | `docs/logo/concepts/` | 8 Logo-Konzepte + Vorschau; gewählt wurde „Token M prompt“ (`M_`) |
 | `assets/` | finales Logo (Marke, Logo hell/dunkel, App-Icon); Wortmarke als Pfade (Inter Display SemiBold, OFL) |
 | `tests/test_core.py`, `tests/test_meridian.py` | Tests |
+| `rust/meridian_fastbpe/` | Rust-Kern (PyO3, abi3) für BPE-Training + Encoding; `tokenizer.py` nutzt ihn, wenn installiert (`backend()`), sonst Python. `MERIDIAN_PURE_PYTHON=1` erzwingt Python. Muss **bit-genau** gleich bleiben: `tests/test_meridian.py` (Rust = Python) + `tools/check_tokenizer_equal.py <korpus>` |
 | `packaging/windows/` | Windows-Installer: `launcher/` (Go, `Meridian.exe`: richtet beim ersten Start mit uv Python 3.12 + PyTorch ein, CUDA 13.0 → 12.8 → CPU, startet Streamlit, öffnet Browser), `meridian.nsi` (NSIS, ohne Admin, nach `%LOCALAPPDATA%\Programs\Meridian`), `build.sh` |
 
 Gut zu wissen:
@@ -94,6 +95,7 @@ Gut zu wissen:
 - Heller Modus, eigene Themes (Editor, Vorschau, Kontrast-Check, Import/Export).
 - Hugging-Face-Token mit Leserechten (Einstellungen → Hugging Face).
 
+- Rust-Tokenizer: Training ≈ 3,6× schneller, identische Ausgabe; Fehler „_ geht verloren“ im Regex behoben.
 - Windows-Installer + Startprogramm (gebaut und auf Linux getestet; auf echtem Windows noch **nicht** getestet).
 
 ## Als Nächstes (mit Vanzal abgesprochen, Reihenfolge vorgeschlagen)
@@ -112,9 +114,9 @@ Gut zu wissen:
    **nicht** ohne zweite Architektur – Vanzal so erklären.
 5. **LoRA-Training:** LoRA-Adapter (Rang r, alpha) für `qkv`/`proj`/`fc`, Basisgewichte eingefroren,
    Adapter separat speichern und wieder einmischen. Vor allem für geladene GPT-2-Modelle.
-6. **Rust-Tokenizer (optional):** BPE-Training/Encoding in Rust (PyO3 + maturin) mit Python-Fallback. Nur dort
-   bringt Rust etwas – Training und Generieren laufen schon in C++/CUDA. Gleichheit mit dem Python-Tokenizer
-   testen; Installation darf ohne Rust nicht brechen.
+6. **Rust-Tokenizer weiter:** erledigt bis auf die Vor-Zerlegung (Regex, bleibt Python). Windows-Wheel baut nur
+   GitHub Actions (`windows-installer.yml`, Job `wheel-windows`); lokal gebaute Installer haben ihn nur, wenn ein
+   `meridian_fastbpe-*-win_amd64.whl` in `build/wheels/` liegt.
 
 ## Bekannte Grenzen
 

@@ -1,0 +1,21 @@
+[package]
+name = "meridian_fastbpe"
+version = "2.1.0"
+edition = "2021"
+description = "Rust-Kern für den BPE-Tokenizer von Meridian (Training + Encoding), identisch zur Python-Version"
+license = "MIT"
+publish = false
+
+[lib]
+name = "meridian_fastbpe"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.25", features = ["extension-module", "abi3-py310", "generate-import-lib"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

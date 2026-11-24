@@ -8,6 +8,7 @@
 #   Meridian.exe   kleines Startprogramm (Go, Quelle in launcher/): richtet beim ersten Start Python + PyTorch ein
 #   uv.exe         Paket- und Python-Manager von Astral (lädt Python und PyTorch beim ersten Start)
 #   app\           der Code von Meridian (ohne Tests und Doku)
+#   wheels\        optional: meridian_fastbpe (Rust-Tokenizer) als Windows-Wheel, falls in build/wheels vorhanden
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
@@ -26,7 +27,7 @@ echo "» App-Dateien sammeln"
 cd "$ROOT"
 git ls-files -z | while IFS= read -r -d '' f; do
   case "$f" in
-    docs/*|tests/*|packaging/*|tools/*|.github/*|.gitignore|AGENTS.md) continue ;;
+    docs/*|tests/*|packaging/*|tools/*|rust/*|.github/*|.gitignore|AGENTS.md) continue ;;
   esac
   mkdir -p "$STAGE/app/$(dirname "$f")"
   cp "$f" "$STAGE/app/$f"
@@ -57,8 +58,24 @@ open(f"{stage}/THIRD-PARTY-NOTICES.txt", "w", encoding="utf-8").write(
     "eigenen Lizenzen." + lic)
 PY
 
+echo "» Schneller Tokenizer (Rust) für Windows"
+WHEEL_DIR="${MERIDIAN_WHEELS_DIR:-$ROOT/build/wheels}"
+NSIS_WHEELS=()
+shopt -s nullglob
+WIN_WHEELS=("$WHEEL_DIR"/meridian_fastbpe-*-win_amd64.whl)
+shopt -u nullglob
+if [ ${#WIN_WHEELS[@]} -gt 0 ]; then
+  mkdir -p "$STAGE/wheels"
+  cp "${WIN_WHEELS[@]}" "$STAGE/wheels/"
+  NSIS_WHEELS=(-DHAVE_WHEELS=1)
+  echo "   mit Rust-Kern: $(basename "${WIN_WHEELS[0]}")"
+else
+  echo "   kein Windows-Wheel gefunden ($WHEEL_DIR) – Installer nutzt den Python-Tokenizer."
+  echo "   Wheel bauen (auf Windows oder in GitHub Actions): maturin build --release -m rust/meridian_fastbpe/Cargo.toml"
+fi
+
 echo "» Installer bauen"
-makensis -V2 -DVERSION="$VERSION" -DSTAGE="$STAGE" -DOUTFILE="$OUT" "$HERE/meridian.nsi"
+makensis -V2 -DVERSION="$VERSION" -DSTAGE="$STAGE" -DOUTFILE="$OUT" "${NSIS_WHEELS[@]}" "$HERE/meridian.nsi"
 ls -la "$OUT"
 sha256sum "$OUT" | tee "$OUT.sha256"
 echo "» Fertig: $OUT"

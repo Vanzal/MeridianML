@@ -432,3 +432,89 @@ def test_hf_verify_reports_role(hf, monkeypatch):
     monkeypatch.setattr(huggingface_hub.HfApi, "whoami", boom)
     r = hf.verify(FAKE)
     assert not r.ok and "kennt diesen Token nicht" in r.message
+
+
+# ------------------------------------------------------------------------- Tokenizer: verlustfrei + Rust-Kern
+import meridianlm.tokenizer as tokmod
+
+
+@pytest.mark.parametrize("text", ["snake_case_name", "__init__(self)", "a_1 _b  _\n", "x² + ½ = Ⅷ", "é ä",
+                                  "Grüezi 😀👍🏽 🇨🇭 漢字 한국어", "\t\r\n\x0b\x0c   end", "it's we'll they'd"])
+def test_encode_decode_is_lossless(text):
+    tok = BPETokenizer.train([text * 3, "hello_world " * 5], 300)
+    assert tok.decode(tok.encode(text)) == text
+
+
+def test_no_unicode_character_is_dropped_by_pretokenizer():
+    for cp in list(range(0, 0x3000)) + [0x1F600, 0x1F1E8, 0x10FFFF]:
+        if 0xD800 <= cp <= 0xDFFF:
+            continue
+        s = "a" + chr(cp) + "b"
+        assert "".join(tokmod._PRETOKEN.findall(s)) == s, hex(cp)
+
+
+def _train_both(docs, vocab):
+    fast = tokmod._fast
+    try:
+        tokmod._fast = None
+        py = BPETokenizer.train(docs, vocab)
+        tokmod._fast = fast
+        rs = BPETokenizer.train(docs, vocab)
+    finally:
+        tokmod._fast = fast
+    return py, rs
+
+
+rust = pytest.mark.skipif(tokmod._fast is None, reason="Rust-Kern (meridian_fastbpe) nicht installiert")
+
+
+@rust
+def test_rust_training_identical_to_python():
+    import random
+    random.seed(7)
+    alphabet = list("aäöüéñ zą\n\t  漢字😀👍🏽é_-.,;:!?'()0123456789") + ["'s", " the", " und"]
+    corpora = [GERMAN * 5, ["ab" * 100, "ba" * 100], [""], ["aaaa" * 50]]
+    corpora += [["".join(random.choice(alphabet) for _ in range(random.randint(0, 300)))
+                 for _ in range(random.randint(1, 8))] for _ in range(40)]
+    for docs in corpora:
+        for vocab in (257, 300, 800):
+            py, rs = _train_both(docs, vocab)
+            assert py.merges == rs.merges and py.merge_counts == rs.merge_counts
+
+
+@rust
+def test_rust_encoding_identical_to_python():
+    docs = GERMAN * 5 + ["def snake_case(x_1):\n    return x_1 ** 2  # Kommentar_mit_Unterstrich\n"] * 5
+    merges = BPETokenizer.train(docs, 600).merges
+    fast = tokmod._fast
+    try:
+        tokmod._fast = None
+        py = BPETokenizer(merges)
+        tokmod._fast = fast
+        rs = BPETokenizer(merges)
+    finally:
+        tokmod._fast = fast
+    assert py._fast_enc is None and rs._fast_enc is not None
+    text = "<|endoftext|>".join(docs) + " Neues_Wort 😀 漢字"
+    assert py.encode(text) == rs.encode(text) == rs.encode(text)          # zweimal: mit warmem Cache
+    assert rs.decode(rs.encode(text)) == text
+    words = tokmod._PRETOKEN.findall(text.replace("<|endoftext|>", ""))
+    assert rs._fast_enc.encode_words(words) == [i for w in words for i in py._encode_word(w)]
+
+
+@rust
+def test_rust_progress_callback_and_errors():
+    calls = []
+    BPETokenizer.train(GERMAN * 3, 400, progress=lambda m, n, b: calls.append((m, n, b)))
+    assert calls and calls[0][0] == 1 and isinstance(calls[0][2], bytes) and calls[-1][0] <= calls[-1][1]
+    with pytest.raises(ValueError):
+        tokmod._fast.train([b"ab"], [1, 2], 10)
+
+
+def test_pure_python_switch():
+    import subprocess
+    import sys
+    out = subprocess.run([sys.executable, "-c", "import meridianlm.tokenizer as t; print(t.backend())"],
+                         capture_output=True, text=True, cwd=ROOT,
+                         env={**__import__("os").environ, "MERIDIAN_PURE_PYTHON": "1"})
+    assert out.stdout.strip() == "python"
