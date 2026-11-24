@@ -521,7 +521,6 @@ Oberfläche keine Emojis enthält.
 - Sennrich et al., *Neural Machine Translation of Rare Words with Subword Units* (BPE, 2016)
 - Andrej Karpathy, *nanoGPT* und *Let's build GPT* (Inspiration für die Architektur)
 
-## Herkunft & Lizenz
+## Lizenz
 
-Magic LLM basiert auf [MiniLLM Studio](https://github.com/sideforge/MiniLLM-Studio) von Joel Weber
-(Abschlussprojekt der WISS) und steht wie das Original unter der [MIT-Lizenz](LICENSE).
+[MIT](LICENSE)

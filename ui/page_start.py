@@ -50,7 +50,7 @@ STEPS = [
 def render() -> None:
     hero("Magic LLM",
          "Ein eigenes Sprachmodell – von Grund auf gebaut, mit Hugging-Face-Daten trainiert und live sichtbar gemacht.",
-         crumb="start")
+         crumb="start", logo=True)
 
     prepared, runs = list_prepared(), list_runs()
     best = min((r["best_val"] for r in runs if r.get("best_val")), default=None)

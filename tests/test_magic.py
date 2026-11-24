@@ -212,7 +212,7 @@ def test_no_emojis_in_user_facing_files(path):
 def test_branding_is_magic_llm():
     for p in [ROOT / "app.py", *(ROOT / "ui").glob("*.py"), ROOT / "README.md"]:
         text = p.read_text(encoding="utf-8")
-        assert "MiniLLM Studio" not in text.replace("auf MiniLLM Studio", "").replace("[MiniLLM Studio]", ""), p
+        assert "minillm" not in text.lower(), p
     assert 'page_title="Magic LLM"' in (ROOT / "app.py").read_text(encoding="utf-8")
 
 

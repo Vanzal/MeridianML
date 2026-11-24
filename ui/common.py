@@ -82,6 +82,9 @@ a {text-decoration: none;}
 .ml-crumb b {color: var(--ml-muted); font-weight: 500;}
 .ml-head h1 {margin: 0 0 6px 0; padding: 0; font-size: 1.65rem; font-weight: 600; line-height: 1.2;}
 .ml-head p {margin: 0; color: var(--ml-muted); font-size: .95rem; max-width: 820px;}
+.ml-title {display: flex; align-items: center; gap: 14px;}
+.ml-logo {width: 44px; height: 44px; color: var(--ml-fg); flex: none; margin-bottom: 4px;}
+.ml-title:has(.ml-logo) h1 {font-size: 2.1rem;}
 
 /* Kennzahlen: flach, Mono-Werte */
 [data-testid="stMetric"] {background: var(--ml-surface); border: 1px solid var(--ml-border); border-radius: 10px;
@@ -197,11 +200,20 @@ def setup_page() -> None:
     st.markdown(theme_css() + CSS, unsafe_allow_html=True)
 
 
-def hero(title: str, subtitle: str, crumb: str = "") -> None:
-    """Seitenkopf im Stil der llama.cpp-WebUI / eines Terminals: Pfad, Titel, Untertitel."""
+MARK_SVG = ('<svg class="ml-logo" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">'
+            '<rect x="2" y="4" width="3.4" height="25" rx="0.6"/><rect x="6.6" y="11" width="3.4" height="18" rx="0.6"/>'
+            '<rect x="11.2" y="18" width="3.4" height="11" rx="0.6"/><rect x="15.8" y="11" width="3.4" height="18" rx="0.6"/>'
+            '<rect x="20.4" y="4" width="3.4" height="25" rx="0.6"/><rect x="25.5" y="24.5" width="4.5" height="4.5" rx="0.5"/>'
+            '</svg>')
+
+
+def hero(title: str, subtitle: str, crumb: str = "", logo: bool = False) -> None:
+    """Seitenkopf im Stil der llama.cpp-WebUI / eines Terminals: Pfad, Titel, Untertitel (optional mit Logo)."""
     path = f"magic-llm <span>/</span> <b>{html.escape(crumb or title.lower())}</b>"
-    st.markdown(f'<div class="ml-head"><div class="ml-crumb">{path}</div><h1>{html.escape(title)}</h1>'
-                f'<p>{subtitle}</p></div>', unsafe_allow_html=True)
+    mark = MARK_SVG if logo else ""
+    st.markdown(f'<div class="ml-head"><div class="ml-crumb">{path}</div>'
+                f'<div class="ml-title">{mark}<h1>{html.escape(title)}</h1></div><p>{subtitle}</p></div>',
+                unsafe_allow_html=True)
 
 
 def dot(state: str) -> str:
