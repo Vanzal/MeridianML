@@ -49,9 +49,17 @@ python tools/make_logo.py assets                                # Logo-Dateien n
 ```
 
 Umgebungsvariablen: `MERIDIAN_DATA_DIR`, `MERIDIAN_RUNS_DIR`, `MERIDIAN_SETTINGS_DIR`, `HF_TOKEN`.
-Installer bauen: `packaging/windows/build.sh` → `dist/Meridian-Setup-<version>.exe`. Der Launcher setzt die drei
+**Desktop-App (Tauri, Hauptweg):** `cd desktop && npm install && npm run stage && npm run dev` (Entwicklung) bzw.
+`npm run build` (Installer für das eigene System). Alle drei Systeme baut `.github/workflows/desktop.yml`; bei einem
+Tag `v*` hängen die Installer am Release. Details: `desktop/README.md`. Tests des Startprogramms:
+`cd desktop/src-tauri && cargo test` (vorher `npm run stage`, weil Tauri die Ressourcen beim Kompilieren prüft).
+Datenordner: Windows `%LOCALAPPDATA%\Meridian`, macOS `~/Library/Application Support/Meridian`, Linux
+`~/.local/share/Meridian` (darin `venv/`, `data/`, `runs/`, `settings/`, `meridian.log`).
+Alter Windows-Installer (Go, nur noch von Hand): `packaging/windows/build.sh` → `dist/Meridian-Setup-<version>.exe`. Der Launcher setzt die drei
 `MERIDIAN_*`-Ordner auf `%LOCALAPPDATA%\Meridian\{data,runs,settings}`; die App darf nie in den Programmordner schreiben.
-Version steht nur in `meridianlm/__init__.py` (Launcher: `version` in `main.go`, `meridian.rc` – beim Erhöhen mitziehen).
+Version steht in `meridianlm/__init__.py`; beim Erhöhen mitziehen: `desktop/src-tauri/tauri.conf.json`,
+`desktop/src-tauri/Cargo.toml`, `desktop/package.json` (Test `test_desktop_app_version_matches`), alter Launcher:
+`version` in `main.go`, `meridian.rc`.
 
 ## Aufbau
 
@@ -74,7 +82,8 @@ Version steht nur in `meridianlm/__init__.py` (Launcher: `version` in `main.go`,
 | `assets/` | finales Logo (Marke, Logo hell/dunkel, App-Icon); Wortmarke als Pfade (Inter Display SemiBold, OFL) |
 | `tests/test_core.py`, `tests/test_meridian.py` | Tests |
 | `rust/meridian_fastbpe/` | Rust-Kern (PyO3, abi3) für BPE-Training + Encoding; `tokenizer.py` nutzt ihn, wenn installiert (`backend()`), sonst Python. `MERIDIAN_PURE_PYTHON=1` erzwingt Python. Muss **bit-genau** gleich bleiben: `tests/test_meridian.py` (Rust = Python) + `tools/check_tokenizer_equal.py <korpus>` |
-| `packaging/windows/` | Windows-Installer: `launcher/` (Go, `Meridian.exe`, Fenster-Programm `-H windowsgui`: eigenes App-Fenster über WebView2 (`github.com/jchv/go-webview2`, reines Go), Ladebildschirm mit Fortschritt (`loading.go`), richtet beim ersten Start mit uv Python 3.12 + PyTorch ein, CUDA 13.0 → 12.8 → CPU, startet Streamlit ohne Konsolenfenster und zeigt es im Fenster; Fenster zu = alles beenden; Protokoll `%LOCALAPPDATA%\Meridian\meridian.log`; ohne WebView2 oder mit `--browser` alter Konsolen-+-Browser-Modus), `meridian.nsi` (NSIS, ohne Admin, nach `%LOCALAPPDATA%\Programs\Meridian`), `build.sh` |
+| `desktop/` | **Desktop-App (Tauri 2, Rust)** für Windows/macOS/Linux. `src-tauri/src/launcher.rs`: Einrichten mit uv (Sidecar), Streamlit starten (Wächter über stdin: stirbt die App, beendet sich Streamlit selbst), Health-Check, ins Fenster laden, überwachen, beim Schliessen beenden. `src-tauri/src/lib.rs`: Fenster, externe Links → Browser, Downloads → Download-Ordner, Einzel-Instanz. `ui/`: Ladebildschirm. `scripts/stage.py`: App-Dateien, uv und Wheels nach `src-tauri/` kopieren (vor jedem Build) |
+| `packaging/windows/` | Alter Windows-Installer (von `desktop/` abgelöst): `launcher/` (Go, `Meridian.exe`, Fenster-Programm `-H windowsgui`: eigenes App-Fenster über WebView2 (`github.com/jchv/go-webview2`, reines Go), Ladebildschirm mit Fortschritt (`loading.go`), richtet beim ersten Start mit uv Python 3.12 + PyTorch ein, CUDA 13.0 → 12.8 → CPU, startet Streamlit ohne Konsolenfenster und zeigt es im Fenster; Fenster zu = alles beenden; Protokoll `%LOCALAPPDATA%\Meridian\meridian.log`; ohne WebView2 oder mit `--browser` alter Konsolen-+-Browser-Modus), `meridian.nsi` (NSIS, ohne Admin, nach `%LOCALAPPDATA%\Programs\Meridian`), `build.sh` |
 
 Gut zu wissen:
 - Die App liest das Theme bei jedem Lauf aus `settings/theme.json`; `apply_to_streamlit` ändert Streamlits
@@ -107,11 +116,15 @@ Gut zu wissen:
   im Training = CE + Gewicht × Balance; angezeigt wird nur die CE (`forward(..., return_aux=True)`). Auslastung
   pro Experte: `GPT.expert_usage()` (nur im Training gezählt), landet in `evals[*]["experts"]`. `active_params()`
   zählt nur k Experten; `ceilings()` nutzt das. CPU-Messung in `docs/perf/PLAN.md` (≈ 0,4–0,5× von dicht).
+- **Desktop-App mit Tauri** (`desktop/`): ersetzt das Go-Startprogramm als Hauptweg, läuft auf Windows, macOS
+  und Linux. Auf Linux (Xvfb) komplett getestet: Erst-Einrichtung, App im Fenster, Fehler-Bildschirm bei Absturz,
+  Beenden beim Schliessen, kein verwaister Server nach `kill -9`, `.deb` aus dem Release-Build. Auf Windows und
+  macOS noch **nicht** getestet. Fällt download.pytorch.org aus, wird PyTorch von PyPI geholt.
 - Rauchtest der Seiten Modell + Training (hell/dunkel, mit/ohne MoE) über `streamlit.testing` (`tests/test_pages.py`).
 
 ## Als Nächstes (mit Vanzal abgesprochen, Reihenfolge vorgeschlagen)
 
-1. **Auf der RTX 5080 prüfen** – Installer auf Windows durchspielen (Erst-Einrichtung, GPU-Erkennung), echte HF-Downloads, Token-Prüfung, Training mit „GPU-Maximum“,
+1. **Auf der RTX 5080 prüfen** – Desktop-App (`desktop.yml`-Installer) auf Windows durchspielen (Erst-Einrichtung, GPU-Erkennung), echte HF-Downloads, Token-Prüfung, Training mit „GPU-Maximum“,
    `bench_cli.py` auf CUDA. Ergebnisse in `docs/perf/PLAN.md` nachtragen (eigene Maschine, eigener Abschnitt).
 2. **GPU-Tempo-Hebel** aus `docs/perf/PLAN.md` → „Nächste Hebel“: CUDA Graphs / `torch.compile(mode="reduce-overhead")`
    für den Decode-Schritt, Würfeln auf der GPU, Batch. Jeweils mit A/B und Gleichheits-Check.

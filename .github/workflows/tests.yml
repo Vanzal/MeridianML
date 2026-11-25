@@ -37,3 +37,20 @@ jobs:
         env:
           GOFLAGS: -mod=mod   # fehlende go.sum-Einträge ergänzen (geprüft gegen sum.golang.org)
         run: go vet ./... && GOOS=windows GOARCH=amd64 go vet ./... && go test ./...
+  desktop:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: Linux-Pakete für Tauri
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev
+      - name: Startprogramm der Desktop-App prüfen und testen
+        run: |
+          python desktop/scripts/stage.py
+          cd desktop/src-tauri && cargo test

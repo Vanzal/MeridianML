@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Nur der eingebaute Ladebildschirm darf mit der App sprechen (nicht die Streamlit-Seite).",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

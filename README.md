@@ -107,23 +107,38 @@ Die App führt mit sechs Seiten durch den ganzen Weg von den Rohdaten bis zum fe
 </tr>
 </table>
 
-## Installation unter Windows (ohne Python-Kenntnisse)
+## Installation als Desktop-App (ohne Python-Kenntnisse)
 
-1. **`Meridian-Setup-<version>.exe`** von der Release-Seite dieses Repos herunterladen und starten.
-   Keine Admin-Rechte nötig. Windows zeigt bei neuen, nicht signierten Programmen eventuell
-   „Der Computer wurde durch Windows geschützt“ – dann auf **Weitere Informationen → Trotzdem ausführen**.
-2. **Meridian** im Startmenü (oder auf dem Desktop) öffnen. Beim **ersten Start** richtet sich Meridian selbst ein:
-   Python und PyTorch werden heruntergeladen (etwa 3 GB, 5–15 Minuten). Mit einer NVIDIA-Grafikkarte wird
-   automatisch die GPU-Version installiert (CUDA 13.0, sonst 12.8, sonst CPU).
+Meridian gibt es als eigene App für **Windows, macOS und Linux** (gebaut mit [Tauri](https://tauri.app)).
+
+1. Von der Release-Seite dieses Repos die Datei für dein System herunterladen und installieren:
+   - Windows: **`Meridian_<version>_x64-setup.exe`** – keine Admin-Rechte nötig. Windows zeigt bei neuen, nicht
+     signierten Programmen eventuell „Der Computer wurde durch Windows geschützt“ – dann auf
+     **Weitere Informationen → Trotzdem ausführen**.
+   - macOS (Apple Silicon): **`Meridian_<version>_aarch64.dmg`** öffnen und Meridian in „Programme“ ziehen. Beim
+     ersten Öffnen: Rechtsklick auf Meridian → **Öffnen** (die App ist nicht signiert).
+   - Linux: **`.deb`** (Ubuntu/Debian) oder **`.AppImage`** (alle anderen).
+2. **Meridian** öffnen. Beim **ersten Start** richtet sich Meridian selbst ein: Python und PyTorch werden
+   heruntergeladen (etwa 3 GB, 5–15 Minuten). Mit einer NVIDIA-Grafikkarte wird automatisch die GPU-Version
+   installiert (CUDA 13.0, sonst 12.8, sonst CPU); auf dem Mac rechnet PyTorch auf der Apple-GPU (MPS).
    Den Fortschritt siehst du direkt im Meridian-Fenster.
 3. Danach erscheint die App im **eigenen Fenster** – kein Browser, kein Konsolenfenster. Fenster schliessen
-   beendet Meridian. Dafür nutzt Meridian WebView2, das in Windows 10 und 11 eingebaut ist; fehlt es, öffnet sich
-   Meridian wie früher im Browser. Mit `Meridian.exe --browser` geht das auch absichtlich.
+   beendet Meridian (auch den Server im Hintergrund). Links zu anderen Seiten (z. B. Hugging Face) öffnen sich im
+   normalen Browser, Downloads landen im Download-Ordner.
 
-Deine Daten (Modelle, Datensätze, Einstellungen) liegen in `%LOCALAPPDATA%\Meridian` und bleiben bei Updates
-erhalten. Startmenü-Eintrag **„Meridian neu einrichten“** baut die Python-Umgebung neu auf, falls etwas klemmt.
-Das Protokoll des letzten Starts liegt in `%LOCALAPPDATA%\Meridian\meridian.log`.
-Den Installer selbst bauen: `packaging/windows/build.sh` (Linux, braucht Go, NSIS und mingw-windres).
+Deine Daten (Modelle, Datensätze, Einstellungen) bleiben bei Updates erhalten. Sie liegen hier:
+
+| System | Ordner |
+|---|---|
+| Windows | `%LOCALAPPDATA%\Meridian` |
+| macOS | `~/Library/Application Support/Meridian` |
+| Linux | `~/.local/share/Meridian` |
+
+Darin liegt auch `meridian.log`, das Protokoll des letzten Starts. Klemmt etwas, zeigt das Fenster eine Meldung mit
+den Knöpfen **Neu starten**, **Neu einrichten** (baut die Python-Umgebung neu auf) und **Protokoll öffnen**.
+Startoptionen: `--reinstall`, `--cpu` (PyTorch ohne Grafikkarte), `--port 8600`.
+
+Die App selbst bauen: siehe [`desktop/README.md`](desktop/README.md).
 
 ## Schnellstart
 
@@ -511,7 +526,8 @@ meridian/
 ├── app.py                 # Streamlit-App (Einstieg)
 ├── train_cli.py           # Training ohne App
 ├── generate_cli.py        # Text erzeugen ohne App (wie llama-cli)
-├── packaging/windows/     # Windows-Installer: Startprogramm (Go), NSIS-Skript, build.sh
+├── desktop/               # Desktop-App (Tauri, Rust): Fenster, Ladebildschirm, Einrichten, Installer
+├── packaging/windows/     # älterer Windows-Installer (Go-Startprogramm + NSIS), wird von desktop/ abgelöst
 ├── rust/meridian_fastbpe/ # optionaler Rust-Kern für den Tokenizer (PyO3)
 ├── bench_cli.py           # Tempo messen und A/B-Tests (wie llama-bench)
 ├── meridianlm/              # der eigentliche Kern

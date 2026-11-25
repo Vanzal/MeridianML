@@ -218,6 +218,26 @@ def test_branding_is_meridian():
     assert (ROOT / "assets" / "meridian-logo.svg").exists() and (ROOT / "assets" / "meridian-icon.svg").exists()
 
 
+def test_desktop_app_version_matches():
+    """Version der Desktop-App (Tauri) = Version von Meridian (meridianlm/__init__.py)."""
+    import json
+    from meridianlm import __version__
+    d = ROOT / "desktop"
+    assert json.loads((d / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))["version"] == __version__
+    assert json.loads((d / "package.json").read_text(encoding="utf-8"))["version"] == __version__
+    cargo = (d / "src-tauri" / "Cargo.toml").read_text(encoding="utf-8")
+    assert re.search(r'^version = "([^"]+)"', cargo, re.M).group(1) == __version__
+
+
+def test_desktop_app_has_no_emojis():
+    files = [p for p in (ROOT / "desktop").rglob("*") if p.suffix in {".rs", ".js", ".html", ".css", ".md", ".py"}
+             and not {"node_modules", "target", "resources", "gen"} & set(p.parts)]
+    assert files
+    for p in files:
+        hits = sorted(set(EMOJI.findall(p.read_text(encoding="utf-8"))))
+        assert not hits, f"Emojis in {p}: {hits}"
+
+
 def test_merge_counts_are_recorded_at_merge_time():
     tok = BPETokenizer.train(["aa ab aa ab aa"], 260)
     assert len(tok.merge_counts) == len(tok.merges) and all(c >= 2 for c in tok.merge_counts)

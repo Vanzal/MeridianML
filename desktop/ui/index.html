@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Meridian</title>
+  <link rel="stylesheet" href="loading.css">
+  <script src="loading.js" defer></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" id="card">
+      <div class="brand">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="44" height="44" fill="currentColor" aria-hidden="true"><rect x="2" y="4" width="3.4" height="25" rx="0.6"/><rect x="6.6" y="11" width="3.4" height="18" rx="0.6"/><rect x="11.2" y="18" width="3.4" height="11" rx="0.6"/><rect x="15.8" y="11" width="3.4" height="18" rx="0.6"/><rect x="20.4" y="4" width="3.4" height="25" rx="0.6"/><rect class="cur" x="25.5" y="24.5" width="4.5" height="4.5" rx="0.5"/></svg>
+        <b>Meridian</b><span id="version"></span>
+      </div>
+      <div class="step" id="step">Starte …</div>
+      <div class="info" id="info"></div>
+      <div class="bar"><i></i></div>
+      <div class="detail" id="detail"></div>
+      <div class="err" id="err">
+        <p><b>Meridian konnte nicht starten.</b></p>
+        <div class="msg" id="msg"></div>
+        <div class="hint">Protokoll: <span id="log"></span></div>
+        <div class="btns">
+          <button class="primary" id="btn-retry">Neu starten</button>
+          <button id="btn-reinstall">Neu einrichten</button>
+          <button id="btn-log">Protokoll öffnen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

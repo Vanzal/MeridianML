@@ -1,10 +1,8 @@
 name: windows-installer
 
-# Baut dist/Meridian-Setup-<version>.exe mit dem Rust-Tokenizer. Bei einem Tag wie v2.1.0 wird der Installer an
-# ein GitHub-Release gehängt; sonst liegt er unter "Artifacts" des Laufs (Actions -> windows-installer -> Run workflow).
+# Alter Windows-Installer (Go-Startprogramm + NSIS). Abgelöst durch die Desktop-App (desktop.yml), läuft nur noch
+# von Hand (Actions -> windows-installer -> Run workflow) und hängt nichts mehr an Releases.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -73,8 +71,3 @@ jobs:
         with:
           name: Meridian-Setup
           path: dist/Meridian-Setup-*.exe*
-      - name: An Release hängen
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/Meridian-Setup-*.exe*

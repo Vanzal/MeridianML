@@ -1,0 +1,15 @@
+{
+  "name": "meridian-desktop",
+  "private": true,
+  "version": "2.1.0",
+  "description": "Meridian als Desktop-App (Tauri)",
+  "scripts": {
+    "stage": "python3 scripts/stage.py",
+    "dev": "tauri dev",
+    "build": "python3 scripts/stage.py && tauri build",
+    "icons": "tauri icon ../assets/meridian-icon.svg -o src-tauri/icons"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
